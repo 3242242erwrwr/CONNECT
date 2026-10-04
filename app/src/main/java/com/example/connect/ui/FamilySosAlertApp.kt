@@ -1,10 +1,6 @@
 package com.example.connect.ui
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.MediaPlayer
@@ -32,7 +28,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
@@ -41,6 +36,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.io.OutputStreamWriter
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.HttpURLConnection
@@ -113,6 +109,8 @@ fun FamilySosAlertApp() {
 
     val chatMessages = remember { mutableStateListOf<SosChatMessage>() }
 
+    // Known target IP addresses & Render Cloud Relay URL
+    val renderCloudUrl = "https://connect-sos-cloud.onrender.com/sos"
     val targetIps = listOf("192.168.100.146", "192.168.100.144", "192.168.43.1", "192.168.1.100")
 
     // Save Chat Messages to SharedPreferences
@@ -178,52 +176,7 @@ fun FamilySosAlertApp() {
         Toast.makeText(context, "🛑 SIRENA O'CHIRILDI!", Toast.LENGTH_SHORT).show()
     }
 
-    // Full-Screen High Priority Notification to POP UP Screen when App is in Background
-    fun triggerFullScreenNotification(context: Context, alertTitle: String) {
-        try {
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            val channelId = "sos_alert_high_priority_channel"
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val channel = NotificationChannel(
-                    channelId,
-                    "Shoshilinch SOS Signallar",
-                    NotificationManager.IMPORTANCE_HIGH
-                ).apply {
-                    description = "Baland SOS sirenasi va ekranga qalqib chiqish"
-                    enableVibration(false)
-                }
-                notificationManager.createNotificationChannel(channel)
-            }
-
-            val launchIntent = context.packageManager.getLaunchIntentForPackage("com.example.connect")?.apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                putExtra("alert_msg", alertTitle)
-            }
-
-            val pendingIntent = PendingIntent.getActivity(
-                context,
-                0,
-                launchIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-
-            val builder = NotificationCompat.Builder(context, channelId)
-                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-                .setContentTitle("🚨 SHOSHILINCH SOS SIGNAL!")
-                .setContentText(alertTitle)
-                .setPriority(NotificationCompat.PRIORITY_MAX)
-                .setCategory(NotificationCompat.CATEGORY_ALARM)
-                .setFullScreenIntent(pendingIntent, true)
-                .setAutoCancel(true)
-
-            notificationManager.notify(8888, builder.build())
-        } catch (e: Exception) {
-            // Ignore notification error
-        }
-    }
-
-    // Play REAL AUTHENTIC ALARM SIREN ONLY on RECIPIENT device + POP UP SCREEN!
+    // Play REAL AUTHENTIC ALARM SIREN ONLY on RECIPIENT device!
     fun triggerRecipientSiren(alertTitle: String, senderInfo: String = "Sinxronlangan Qurilma") {
         val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val timeNow = sdf.format(Date())
@@ -239,21 +192,6 @@ fun FamilySosAlertApp() {
             isOutgoing = false
         ))
         saveChatMessagesToPrefs()
-
-        // AUTO-POPUP SCREEN ON INCOMING SOS IN BACKGROUND!
-        try {
-            triggerFullScreenNotification(context, alertTitle)
-
-            val launchIntent = context.packageManager.getLaunchIntentForPackage("com.example.connect")?.apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                putExtra("alert_msg", alertTitle)
-            }
-            if (launchIntent != null) {
-                context.startActivity(launchIntent)
-            }
-        } catch (e: Exception) {
-            // Ignore launch error
-        }
 
         try {
             AlarmAudioController.stopAllSound(context)
@@ -293,12 +231,12 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // Send UDP + HTTP alert across Wi-Fi network
+    // Send HTTP Cloud Request (Works across ANY 4G/5G/Wi-Fi Worldwide via Render.com!)
     fun sendUdpSosAlert(alertText: String) {
         val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val timeNow = sdf.format(Date())
 
-        // Add to sender chat list (NO sound played locally on sender!)
+        // Add to sender chat list
         chatMessages.add(0, SosChatMessage(
             id = System.currentTimeMillis().toString(),
             senderName = if (isHuaweiDevice) "HUAWEI nova 13i" else "Honor X8a (Siz)",
@@ -309,21 +247,44 @@ fun FamilySosAlertApp() {
         saveChatMessagesToPrefs()
 
         coroutineScope.launch(Dispatchers.IO) {
-            // 1. Direct HTTP GET Request
+            // 1. Post to Global Render Cloud Relay Server
+            try {
+                val url = URL(renderCloudUrl)
+                val conn = url.openConnection() as HttpURLConnection
+                conn.connectTimeout = 2000
+                conn.readTimeout = 2000
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/json")
+
+                val jsonPayload = JSONObject().apply {
+                    put("alert", alertText)
+                    put("sender", if (isHuaweiDevice) "HUAWEI nova 13i" else "Honor X8a")
+                }.toString()
+
+                val writer = OutputStreamWriter(conn.outputStream)
+                writer.write(jsonPayload)
+                writer.flush()
+                writer.close()
+                conn.responseCode
+                conn.disconnect()
+            } catch (e: Exception) {}
+
+            // 2. Direct Local Wi-Fi HTTP Request
             targetIps.forEach { ip ->
                 try {
                     val encodedMsg = URLEncoder.encode(alertText, "UTF-8")
                     val url = URL("http://$ip:8080/sos?msg=$encodedMsg")
                     val conn = url.openConnection() as HttpURLConnection
-                    conn.connectTimeout = 800
-                    conn.readTimeout = 800
+                    conn.connectTimeout = 600
+                    conn.readTimeout = 600
                     conn.requestMethod = "GET"
                     conn.responseCode
                     conn.disconnect()
                 } catch (e: Exception) {}
             }
 
-            // 2. UDP Broadcast Packet
+            // 3. UDP Broadcast Packet Fallback
             try {
                 val socket = DatagramSocket()
                 socket.broadcast = true
@@ -333,8 +294,6 @@ fun FamilySosAlertApp() {
                 val targetAddresses = listOf(
                     InetAddress.getByName("255.255.255.255"),
                     InetAddress.getByName("192.168.100.255"),
-                    InetAddress.getByName("192.168.100.146"),
-                    InetAddress.getByName("192.168.100.144"),
                     InetAddress.getByName("192.168.43.255")
                 )
 
@@ -349,7 +308,50 @@ fun FamilySosAlertApp() {
             } catch (e: Exception) {}
 
             withContext(Dispatchers.Main) {
-                Toast.makeText(context, "📡 Signal Yuborildi: $alertText", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "🌐 GLOBAL CLOUD SIGNAL YUBORILDI!", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // Global Render Cloud Poller (Checks for Global Cloud SOS Alerts every 3 seconds)
+    var lastCloudAlertId by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        @Suppress("OPT_IN_USAGE")
+        GlobalScope.launch(Dispatchers.IO) {
+            while (true) {
+                try {
+                    val url = URL(renderCloudUrl)
+                    val conn = url.openConnection() as HttpURLConnection
+                    conn.connectTimeout = 2000
+                    conn.readTimeout = 2000
+                    conn.requestMethod = "GET"
+
+                    if (conn.responseCode == 200) {
+                        val reader = BufferedReader(InputStreamReader(conn.inputStream))
+                        val responseText = reader.readText()
+                        reader.close()
+
+                        val jsonObj = JSONObject(responseText)
+                        val latestAlert = jsonObj.optJSONObject("latest_alert")
+                        if (latestAlert != null) {
+                            val alertId = latestAlert.optString("id", "")
+                            val alertMsg = latestAlert.optString("alert", "")
+                            val sender = latestAlert.optString("sender", "")
+
+                            val mySenderName = if (isHuaweiDevice) "HUAWEI nova 13i" else "Honor X8a"
+
+                            if (alertId.isNotBlank() && alertId != lastCloudAlertId && sender != mySenderName) {
+                                lastCloudAlertId = alertId
+                                withContext(Dispatchers.Main) {
+                                    triggerRecipientSiren(alertMsg, "Render Cloud ($sender)")
+                                }
+                            }
+                        }
+                    }
+                    conn.disconnect()
+                } catch (e: Exception) {}
+
+                kotlinx.coroutines.delay(3000)
             }
         }
     }
@@ -470,7 +472,7 @@ fun FamilySosAlertApp() {
                             .background(Color.Green)
                     )
                     Text(
-                        text = if (isHuaweiDevice) "📱 HUAWEI nova 13i Terminal" else "📱 Honor X8a Boshqaruv",
+                        text = if (isHuaweiDevice) "📱 HUAWEI Terminal" else "📱 Honor X8a Boshqaruv",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp
@@ -478,7 +480,7 @@ fun FamilySosAlertApp() {
                 }
 
                 Text(
-                    text = "📡 AUTO-POPUP ONLINE",
+                    text = "🌐 GLOBAL CLOUD ONLINE",
                     color = Color(0xFF81C784),
                     fontWeight = FontWeight.Bold,
                     fontSize = 11.sp
@@ -588,7 +590,7 @@ fun FamilySosAlertApp() {
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                     modifier = Modifier.height(48.dp)
                 ) {
-                    Text("📡 YUBOR", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text("🌐 YUBOR", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
             }
 
@@ -628,7 +630,7 @@ fun FamilySosAlertApp() {
             }
 
             Text(
-                text = "SOS Xabarlar Spiskasi (Chat Feed):",
+                text = "SOS Xabarlar Spiskasi (Doimiy Saqlanuvchi Feed):",
                 color = Color.LightGray,
                 fontWeight = FontWeight.Bold,
                 fontSize = 12.sp
