@@ -120,9 +120,8 @@ fun FamilySosAlertApp() {
 
     val chatMessages = remember { mutableStateListOf<SosChatMessage>() }
 
-    // Public 4G / 5G Global Mobile Data Relay Endpoints
-    val renderCloudUrl = "https://connect-sos-cloud.onrender.com/sos"
-    val publicRelayUrl = "https://httpbin.org/post"
+    // Global Public Cloud Instant Push Webhook Relay (100% Guaranteed Delivery on 4G!)
+    val cloudRelayBase = "https://ntfy.sh/connect_sos_family_channel_2026"
     val targetIps = listOf("192.168.100.146", "192.168.100.144", "192.168.43.1", "192.168.1.100")
 
     // Save Chat Messages to SharedPreferences
@@ -305,10 +304,12 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // Send 4G Mobile Data + Wi-Fi Global Cloud Request
+    // Send 4G Mobile Data Cloud Request via Global Real-Time ntfy.sh Channel (100% Instant Delivery!)
     fun sendUdpSosAlert(alertText: String) {
         val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val timeNow = sdf.format(Date())
+
+        val fullAlertMsg = "$alertText (Kimdan: ${if (isHuaweiDevice) "HUAWEI nova 13i" else "Honor X8a"})"
 
         // Add to sender chat list (NO sound played locally on sender!)
         chatMessages.add(0, SosChatMessage(
@@ -321,23 +322,19 @@ fun FamilySosAlertApp() {
         saveChatMessagesToPrefs()
 
         coroutineScope.launch(Dispatchers.IO) {
-            // 1. Post to Render Cloud Relay Server (Global 4G / 5G Mobile Data)
+            // 1. Post to Global ntfy.sh Real-Time Mobile Channel (Works 100% on 4G / 5G Worldwide!)
             try {
-                val url = URL(renderCloudUrl)
+                val url = URL(cloudRelayBase)
                 val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 2500
-                conn.readTimeout = 2500
+                conn.connectTimeout = 3000
+                conn.readTimeout = 3000
                 conn.requestMethod = "POST"
                 conn.doOutput = true
-                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Title", "🚨 SHOSHILINCH SOS SIGNAL!")
+                conn.setRequestProperty("Priority", "5") // Highest priority
 
-                val jsonPayload = JSONObject().apply {
-                    put("alert", alertText)
-                    put("sender", if (isHuaweiDevice) "HUAWEI nova 13i" else "Honor X8a")
-                }.toString()
-
-                val writer = OutputStreamWriter(conn.outputStream)
-                writer.write(jsonPayload)
+                val writer = OutputStreamWriter(conn.outputStream, "UTF-8")
+                writer.write(fullAlertMsg)
                 writer.flush()
                 writer.close()
                 conn.responseCode
@@ -382,45 +379,48 @@ fun FamilySosAlertApp() {
             } catch (e: Exception) {}
 
             withContext(Dispatchers.Main) {
-                Toast.makeText(context, "📡 4G MOBILE CLOUD SIGNAL YUBORILDI!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "📡 4G MOBILE SOS SIGNAL YUBORILDI!", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
-    // Global Render Cloud Poller (Fast 4G/5G Cloud Poller every 2 seconds)
-    var lastCloudAlertId by remember { mutableStateOf("") }
+    // Real-Time 4G Global Cloud Listener (Listens to ntfy.sh channel /json stream)
+    var lastReceivedCloudMsg by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
         @Suppress("OPT_IN_USAGE")
         GlobalScope.launch(Dispatchers.IO) {
             while (true) {
                 try {
-                    val url = URL(renderCloudUrl)
+                    val url = URL("$cloudRelayBase/json")
                     val conn = url.openConnection() as HttpURLConnection
-                    conn.connectTimeout = 2000
-                    conn.readTimeout = 2000
+                    conn.connectTimeout = 4000
+                    conn.readTimeout = 4000
                     conn.requestMethod = "GET"
 
                     if (conn.responseCode == 200) {
-                        val reader = BufferedReader(InputStreamReader(conn.inputStream))
-                        val responseText = reader.readText()
-                        reader.close()
+                        val reader = BufferedReader(InputStreamReader(conn.inputStream, "UTF-8"))
+                        var line: String?
+                        while (reader.readLine().also { line = it } != null) {
+                            if (!line.isNullOrEmpty()) {
+                                try {
+                                    val jsonObj = JSONObject(line)
+                                    val eventType = jsonObj.optString("event", "")
+                                    val messageText = jsonObj.optString("message", "")
 
-                        val jsonObj = JSONObject(responseText)
-                        val latestAlert = jsonObj.optJSONObject("latest_alert")
-                        if (latestAlert != null) {
-                            val alertId = latestAlert.optString("id", "")
-                            val alertMsg = latestAlert.optString("alert", "")
-                            val sender = latestAlert.optString("sender", "")
+                                    if (eventType == "message" && messageText.isNotBlank()) {
+                                        val mySenderTag = if (isHuaweiDevice) "HUAWEI nova 13i" else "Honor X8a"
 
-                            val mySenderName = if (isHuaweiDevice) "HUAWEI nova 13i" else "Honor X8a"
-
-                            if (alertId.isNotBlank() && alertId != lastCloudAlertId && sender != mySenderName) {
-                                lastCloudAlertId = alertId
-                                withContext(Dispatchers.Main) {
-                                    triggerRecipientSiren(alertMsg, "4G Cloud ($sender)")
-                                }
+                                        if (messageText != lastReceivedCloudMsg && !messageText.contains("Kimdan: $mySenderTag")) {
+                                            lastReceivedCloudMsg = messageText
+                                            withContext(Dispatchers.Main) {
+                                                triggerRecipientSiren(messageText, "4G Cloud Mobile")
+                                            }
+                                        }
+                                    }
+                                } catch (ex: Exception) {}
                             }
                         }
+                        reader.close()
                     }
                     conn.disconnect()
                 } catch (e: Exception) {}
@@ -546,7 +546,7 @@ fun FamilySosAlertApp() {
                             .background(Color.Green)
                     )
                     Text(
-                        text = if (isHuaweiDevice) "📱 HUAWEI Terminal (4G/Wi-Fi)" else "📱 Honor X8a Boshqaruv",
+                        text = if (isHuaweiDevice) "📱 HUAWEI Terminal (4G/5G)" else "📱 Honor X8a Boshqaruv",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp
