@@ -1,0 +1,739 @@
+package com.example.connect.ui
+
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.media.AudioAttributes
+import android.media.AudioManager
+import android.media.MediaPlayer
+import android.media.Ringtone
+import android.media.RingtoneManager
+import android.net.wifi.WifiManager
+import android.os.Build
+import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.app.NotificationCompat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.HttpURLConnection
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.net.URL
+import java.net.URLEncoder
+import java.text.SimpleDateFormat
+import java.util.*
+
+data class SosChatMessage(
+    val id: String,
+    val senderName: String,
+    val alertText: String,
+    val timestamp: String,
+    val isOutgoing: Boolean
+)
+
+// Global Singleton References for 100% Guaranteed Instant Sound Stop
+object AlarmAudioController {
+    var mediaPlayer: MediaPlayer? = null
+    var activeRingtone: Ringtone? = null
+
+    fun stopAllSound(context: Context) {
+        try {
+            mediaPlayer?.let { player ->
+                if (player.isPlaying) {
+                    player.stop()
+                }
+                player.reset()
+                player.release()
+            }
+        } catch (e: Exception) {
+            // Ignore error
+        } finally {
+            mediaPlayer = null
+        }
+
+        try {
+            activeRingtone?.let { ringtone ->
+                if (ringtone.isPlaying) {
+                    ringtone.stop()
+                }
+            }
+        } catch (e: Exception) {
+            // Ignore error
+        } finally {
+            activeRingtone = null
+        }
+    }
+}
+
+@Composable
+fun FamilySosAlertApp() {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    val isHuaweiDevice = remember {
+        Build.MANUFACTURER.contains("HUAWEI", ignoreCase = true) ||
+                Build.MODEL.contains("CTR-L91", ignoreCase = true) ||
+                Build.BRAND.contains("HUAWEI", ignoreCase = true)
+    }
+
+    val myDeviceId = remember { if (isHuaweiDevice) "HUAWEI_NOVA_13i" else "HONOR_X8a" }
+    val prefs = remember { context.getSharedPreferences("connect_sos_prefs", Context.MODE_PRIVATE) }
+
+    var isAlertActive by remember { mutableStateOf(false) }
+    var lastAlertText by remember { mutableStateOf("") }
+    var customMessageText by remember { mutableStateOf("") }
+
+    val chatMessages = remember { mutableStateListOf<SosChatMessage>() }
+
+    val targetIps = listOf("192.168.100.146", "192.168.100.144", "192.168.43.1", "192.168.1.100")
+
+    // Save Chat Messages to SharedPreferences
+    fun saveChatMessagesToPrefs() {
+        try {
+            val jsonArray = JSONArray()
+            chatMessages.forEach { msg ->
+                val obj = JSONObject().apply {
+                    put("id", msg.id)
+                    put("senderName", msg.senderName)
+                    put("alertText", msg.alertText)
+                    put("timestamp", msg.timestamp)
+                    put("isOutgoing", msg.isOutgoing)
+                }
+                jsonArray.put(obj)
+            }
+            prefs.edit().putString("saved_chat_messages", jsonArray.toString()).apply()
+        } catch (e: Exception) {
+            // Ignore JSON error
+        }
+    }
+
+    // Load Saved Chat Messages on App Start
+    fun loadChatMessagesFromPrefs() {
+        try {
+            val savedJson = prefs.getString("saved_chat_messages", null)
+            if (!savedJson.isNullOrEmpty()) {
+                val jsonArray = JSONArray(savedJson)
+                val loadedList = mutableListOf<SosChatMessage>()
+                for (i in 0 until jsonArray.length()) {
+                    val obj = jsonArray.getJSONObject(i)
+                    loadedList.add(
+                        SosChatMessage(
+                            id = obj.getString("id"),
+                            senderName = obj.getString("senderName"),
+                            alertText = obj.getString("alertText"),
+                            timestamp = obj.getString("timestamp"),
+                            isOutgoing = obj.getBoolean("isOutgoing")
+                        )
+                    )
+                }
+                chatMessages.clear()
+                chatMessages.addAll(loadedList)
+            } else {
+                if (chatMessages.isEmpty()) {
+                    chatMessages.add(SosChatMessage("1", "Honor X8a", "🚨 SAIDBEKKA QARA!", "02:18:12", isOutgoing = true))
+                    chatMessages.add(SosChatMessage("2", "HUAWEI nova 13i", "🔔 JASMINAHON QANI?", "02:10:10", isOutgoing = false))
+                }
+            }
+        } catch (e: Exception) {
+            // Ignore error
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        loadChatMessagesFromPrefs()
+    }
+
+    // STOP ALL SIREN SOUNDS INSTANTLY
+    fun handleStopSirena() {
+        AlarmAudioController.stopAllSound(context)
+        isAlertActive = false
+        Toast.makeText(context, "🛑 SIRENA O'CHIRILDI!", Toast.LENGTH_SHORT).show()
+    }
+
+    // Full-Screen High Priority Notification to POP UP Screen when App is in Background
+    fun triggerFullScreenNotification(context: Context, alertTitle: String) {
+        try {
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val channelId = "sos_alert_high_priority_channel"
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    channelId,
+                    "Shoshilinch SOS Signallar",
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "Baland SOS sirenasi va ekranga qalqib chiqish"
+                    enableVibration(false)
+                }
+                notificationManager.createNotificationChannel(channel)
+            }
+
+            val launchIntent = context.packageManager.getLaunchIntentForPackage("com.example.connect")?.apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                putExtra("alert_msg", alertTitle)
+            }
+
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                0,
+                launchIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val builder = NotificationCompat.Builder(context, channelId)
+                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                .setContentTitle("🚨 SHOSHILINCH SOS SIGNAL!")
+                .setContentText(alertTitle)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setFullScreenIntent(pendingIntent, true)
+                .setAutoCancel(true)
+
+            notificationManager.notify(8888, builder.build())
+        } catch (e: Exception) {
+            // Ignore notification error
+        }
+    }
+
+    // Play REAL AUTHENTIC ALARM SIREN ONLY on RECIPIENT device + POP UP SCREEN!
+    fun triggerRecipientSiren(alertTitle: String, senderInfo: String = "Sinxronlangan Qurilma") {
+        val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+        val timeNow = sdf.format(Date())
+
+        lastAlertText = alertTitle
+        isAlertActive = true
+
+        chatMessages.add(0, SosChatMessage(
+            id = System.currentTimeMillis().toString(),
+            senderName = senderInfo,
+            alertText = alertTitle,
+            timestamp = timeNow,
+            isOutgoing = false
+        ))
+        saveChatMessagesToPrefs()
+
+        // AUTO-POPUP SCREEN ON INCOMING SOS IN BACKGROUND!
+        try {
+            triggerFullScreenNotification(context, alertTitle)
+
+            val launchIntent = context.packageManager.getLaunchIntentForPackage("com.example.connect")?.apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                putExtra("alert_msg", alertTitle)
+            }
+            if (launchIntent != null) {
+                context.startActivity(launchIntent)
+            }
+        } catch (e: Exception) {
+            // Ignore launch error
+        }
+
+        try {
+            AlarmAudioController.stopAllSound(context)
+
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+            audioManager.setStreamVolume(AudioManager.STREAM_ALARM, maxVolume, 0)
+
+            val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+
+            val player = MediaPlayer().apply {
+                setDataSource(context, alarmUri)
+                if (Build.VERSION.SDK_INT >= 21) {
+                    setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_ALARM)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .build()
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    setAudioStreamType(AudioManager.STREAM_ALARM)
+                }
+                isLooping = true
+                prepare()
+                start()
+            }
+            AlarmAudioController.mediaPlayer = player
+        } catch (e: Exception) {
+            try {
+                val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                val ringtone = RingtoneManager.getRingtone(context, alarmUri)
+                ringtone.play()
+                AlarmAudioController.activeRingtone = ringtone
+            } catch (ex: Exception) {}
+        }
+    }
+
+    // Send UDP + HTTP alert across Wi-Fi network
+    fun sendUdpSosAlert(alertText: String) {
+        val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+        val timeNow = sdf.format(Date())
+
+        // Add to sender chat list (NO sound played locally on sender!)
+        chatMessages.add(0, SosChatMessage(
+            id = System.currentTimeMillis().toString(),
+            senderName = if (isHuaweiDevice) "HUAWEI nova 13i" else "Honor X8a (Siz)",
+            alertText = alertText,
+            timestamp = timeNow,
+            isOutgoing = true
+        ))
+        saveChatMessagesToPrefs()
+
+        coroutineScope.launch(Dispatchers.IO) {
+            // 1. Direct HTTP GET Request
+            targetIps.forEach { ip ->
+                try {
+                    val encodedMsg = URLEncoder.encode(alertText, "UTF-8")
+                    val url = URL("http://$ip:8080/sos?msg=$encodedMsg")
+                    val conn = url.openConnection() as HttpURLConnection
+                    conn.connectTimeout = 800
+                    conn.readTimeout = 800
+                    conn.requestMethod = "GET"
+                    conn.responseCode
+                    conn.disconnect()
+                } catch (e: Exception) {}
+            }
+
+            // 2. UDP Broadcast Packet
+            try {
+                val socket = DatagramSocket()
+                socket.broadcast = true
+                val payload = "SOS_PACKET::$myDeviceId::$alertText"
+                val messageData = payload.toByteArray()
+
+                val targetAddresses = listOf(
+                    InetAddress.getByName("255.255.255.255"),
+                    InetAddress.getByName("192.168.100.255"),
+                    InetAddress.getByName("192.168.100.146"),
+                    InetAddress.getByName("192.168.100.144"),
+                    InetAddress.getByName("192.168.43.255")
+                )
+
+                targetAddresses.forEach { addr ->
+                    try {
+                        val packet = DatagramPacket(messageData, messageData.size, addr, 8888)
+                        socket.send(packet)
+                    } catch (e: Exception) {}
+                }
+
+                socket.close()
+            } catch (e: Exception) {}
+
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "📡 Signal Yuborildi: $alertText", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // Embedded HTTP Direct Server (Port 8080)
+    DisposableEffect(Unit) {
+        var isServerRunning = true
+        var serverSocket: ServerSocket? = null
+
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                serverSocket = ServerSocket(8080)
+                while (isServerRunning && serverSocket?.isClosed == false) {
+                    val client = serverSocket?.accept() ?: break
+                    val reader = BufferedReader(InputStreamReader(client.getInputStream()))
+                    val line = reader.readLine() ?: ""
+
+                    if (line.contains("GET /sos")) {
+                        val msgParam = line.substringAfter("msg=").substringBefore(" ").substringBefore("&")
+                        val alertText = java.net.URLDecoder.decode(msgParam, "UTF-8")
+                        val clientIp = client.inetAddress.hostAddress ?: "Qurilma"
+
+                        withContext(Dispatchers.Main) {
+                            triggerRecipientSiren(alertText, "Tarmoq ($clientIp)")
+                        }
+
+                        val out = client.getOutputStream()
+                        out.write("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK".toByteArray())
+                        out.flush()
+                    }
+                    client.close()
+                }
+            } catch (e: Exception) {}
+        }
+
+        onDispose {
+            isServerRunning = false
+            try { serverSocket?.close() } catch (e: Exception) {}
+        }
+    }
+
+    // Persistent UDP Listener Service
+    DisposableEffect(Unit) {
+        var isListening = true
+        var socket: DatagramSocket? = null
+        var multicastLock: WifiManager.MulticastLock? = null
+
+        try {
+            val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            multicastLock = wifiManager.createMulticastLock("connect_sos_lock").apply {
+                setReferenceCounted(true)
+                acquire()
+            }
+        } catch (e: Exception) {}
+
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                socket = DatagramSocket(8888)
+                val buffer = ByteArray(1024)
+
+                while (isListening && socket?.isClosed == false) {
+                    val packet = DatagramPacket(buffer, buffer.size)
+                    socket?.receive(packet)
+                    val receivedMessage = String(packet.data, 0, packet.length)
+
+                    if (receivedMessage.startsWith("SOS_PACKET::")) {
+                        val parts = receivedMessage.split("::")
+                        if (parts.size >= 3) {
+                            val senderId = parts[1]
+                            val alertMsg = parts[2]
+
+                            if (senderId != myDeviceId) {
+                                val senderIp = packet.address.hostAddress ?: "Qurilma"
+                                withContext(Dispatchers.Main) {
+                                    triggerRecipientSiren(alertMsg, "Tarmoq ($senderIp)")
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {}
+        }
+
+        onDispose {
+            isListening = false
+            try { socket?.close() } catch (e: Exception) {}
+            try { if (multicastLock?.isHeld == true) multicastLock.release() } catch (e: Exception) {}
+        }
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = Color(0xFF0F1116)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(10.dp)
+        ) {
+            // Compact Header Bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF1E222B))
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(Color.Green)
+                    )
+                    Text(
+                        text = if (isHuaweiDevice) "📱 HUAWEI nova 13i Terminal" else "📱 Honor X8a Boshqaruv",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp
+                    )
+                }
+
+                Text(
+                    text = "📡 AUTO-POPUP ONLINE",
+                    color = Color(0xFF81C784),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Quick SOS Buttons Row 1
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Button(
+                    onClick = { sendUdpSosAlert("🚨 SAIDBEKKA QARA!") },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
+                    shape = RoundedCornerShape(6.dp),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(42.dp)
+                ) {
+                    Text("📢 SAIDBEKKA QARA", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                }
+
+                Button(
+                    onClick = { sendUdpSosAlert("🚨 JASMINAHON QANI?") },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFB8C00)),
+                    shape = RoundedCornerShape(6.dp),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(42.dp)
+                ) {
+                    Text("🔔 JASMINAHON QANI", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Quick SOS Buttons Row 2
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Button(
+                    onClick = { sendUdpSosAlert("🆘 UYGA SHOSHILINCH KELING!") },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8E24AA)),
+                    shape = RoundedCornerShape(6.dp),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(36.dp)
+                ) {
+                    Text("🆘 UYGA KELING", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                }
+
+                Button(
+                    onClick = { sendUdpSosAlert("📞 TELEFONNI KO'RING!") },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B)),
+                    shape = RoundedCornerShape(6.dp),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(36.dp)
+                ) {
+                    Text("📞 TELNI KO'RING", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // High-Contrast Custom Message Input Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = customMessageText,
+                    onValueChange = { customMessageText = it },
+                    placeholder = { Text("O'zingiz matn yozing...", color = Color.LightGray, fontSize = 12.sp) },
+                    textStyle = TextStyle(color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFFE53935),
+                        unfocusedBorderColor = Color(0xFF424B5D),
+                        focusedContainerColor = Color(0xFF222836),
+                        unfocusedContainerColor = Color(0xFF222836),
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                )
+
+                Button(
+                    onClick = {
+                        if (customMessageText.isNotBlank()) {
+                            sendUdpSosAlert("💬 $customMessageText")
+                            customMessageText = ""
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
+                    shape = RoundedCornerShape(6.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                    modifier = Modifier.height(48.dp)
+                ) {
+                    Text("📡 YUBOR", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Active Alert Overlay Banner
+            if (isAlertActive) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFB71C1C)),
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("🔊 BALAND SIRENA CHALINMOQDA!", color = Color.Yellow, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                            Text(lastAlertText, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+
+                        Button(
+                            onClick = { handleStopSirena() },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFFFFF)),
+                            shape = RoundedCornerShape(4.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text("🛑 STOP", color = Color.Red, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+            }
+
+            Text(
+                text = "SOS Xabarlar Spiskasi (Chat Feed):",
+                color = Color.LightGray,
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Persistent Chat Feed Message List
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                items(chatMessages) { msg ->
+                    ChatBubbleCard(msg = msg)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // PERMANENT ALWAYS-VISIBLE PROMINENT STOP BUTTON AT THE VERY BOTTOM OF THE SCREEN!
+            Button(
+                onClick = { handleStopSirena() },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+            ) {
+                Text(
+                    text = "🛑 STOP SIRENA (OVOZNI TO'XTATISH)",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ChatBubbleCard(msg: SosChatMessage) {
+    val alignment = if (msg.isOutgoing) Alignment.End else Alignment.Start
+    val bubbleColor = if (msg.isOutgoing) Color(0xFF1E88E5) else Color(0xFF2A2E3D)
+    val senderLabel = if (msg.isOutgoing) "📤 Yuborildi (Siz)" else "📥 Kelgan Signal (${msg.senderName})"
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = alignment
+    ) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = bubbleColor),
+            shape = RoundedCornerShape(
+                topStart = 10.dp,
+                topEnd = 10.dp,
+                bottomStart = if (msg.isOutgoing) 10.dp else 2.dp,
+                bottomEnd = if (msg.isOutgoing) 2.dp else 10.dp
+            ),
+            modifier = Modifier
+                .widthIn(max = 280.dp)
+                .border(
+                    width = 1.dp,
+                    color = if (msg.isOutgoing) Color(0xFF42A5F5) else Color(0xFF3D4457),
+                    shape = RoundedCornerShape(
+                        topStart = 10.dp,
+                        topEnd = 10.dp,
+                        bottomStart = if (msg.isOutgoing) 10.dp else 2.dp,
+                        bottomEnd = if (msg.isOutgoing) 2.dp else 10.dp
+                    )
+                )
+        ) {
+            Column(
+                modifier = Modifier.padding(10.dp)
+            ) {
+                Text(
+                    text = senderLabel,
+                    color = if (msg.isOutgoing) Color(0xFFBBDEFB) else Color(0xFFFFB74D),
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 10.sp
+                )
+
+                Spacer(modifier = Modifier.height(3.dp))
+
+                Text(
+                    text = msg.alertText,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Text(
+                        text = msg.timestamp,
+                        color = Color.LightGray,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 9.sp
+                    )
+                }
+            }
+        }
+    }
+}
