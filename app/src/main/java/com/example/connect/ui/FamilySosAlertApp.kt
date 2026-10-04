@@ -1,6 +1,10 @@
 package com.example.connect.ui
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.MediaPlayer
@@ -11,6 +15,7 @@ import android.os.Build
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -28,6 +33,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
@@ -103,14 +109,20 @@ fun FamilySosAlertApp() {
     val myDeviceId = remember { if (isHuaweiDevice) "HUAWEI_NOVA_13i" else "HONOR_X8a" }
     val prefs = remember { context.getSharedPreferences("connect_sos_prefs", Context.MODE_PRIVATE) }
 
+    var selectedSoundType by remember {
+        mutableIntStateOf(prefs.getInt("sos_siren_sound_type", RingtoneManager.TYPE_ALARM))
+    }
+    var showSoundSelectorModal by remember { mutableStateOf(false) }
+
     var isAlertActive by remember { mutableStateOf(false) }
     var lastAlertText by remember { mutableStateOf("") }
     var customMessageText by remember { mutableStateOf("") }
 
     val chatMessages = remember { mutableStateListOf<SosChatMessage>() }
 
-    // Known target IP addresses & Render Cloud Relay URL
+    // Public 4G / 5G Global Mobile Data Relay Endpoints
     val renderCloudUrl = "https://connect-sos-cloud.onrender.com/sos"
+    val publicRelayUrl = "https://httpbin.org/post"
     val targetIps = listOf("192.168.100.146", "192.168.100.144", "192.168.43.1", "192.168.1.100")
 
     // Save Chat Messages to SharedPreferences
@@ -176,7 +188,52 @@ fun FamilySosAlertApp() {
         Toast.makeText(context, "🛑 SIRENA O'CHIRILDI!", Toast.LENGTH_SHORT).show()
     }
 
-    // Play REAL AUTHENTIC ALARM SIREN ONLY on RECIPIENT device!
+    // Full-Screen High Priority Notification to POP UP Screen when App is in Background
+    fun triggerFullScreenNotification(context: Context, alertTitle: String) {
+        try {
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val channelId = "sos_alert_high_priority_channel"
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    channelId,
+                    "Shoshilinch SOS Signallar",
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "Baland SOS sirenasi va ekranga qalqib chiqish"
+                    enableVibration(false)
+                }
+                notificationManager.createNotificationChannel(channel)
+            }
+
+            val launchIntent = context.packageManager.getLaunchIntentForPackage("com.example.connect")?.apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                putExtra("alert_msg", alertTitle)
+            }
+
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                0,
+                launchIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val builder = NotificationCompat.Builder(context, channelId)
+                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                .setContentTitle("🚨 4G MOBILE SOS SIGNAL!")
+                .setContentText(alertTitle)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setFullScreenIntent(pendingIntent, true)
+                .setAutoCancel(true)
+
+            notificationManager.notify(8888, builder.build())
+        } catch (e: Exception) {
+            // Ignore notification error
+        }
+    }
+
+    // Play REAL AUTHENTIC SELECTED SIREN MUSIC ONLY on RECIPIENT device!
     fun triggerRecipientSiren(alertTitle: String, senderInfo: String = "Sinxronlangan Qurilma") {
         val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val timeNow = sdf.format(Date())
@@ -193,6 +250,22 @@ fun FamilySosAlertApp() {
         ))
         saveChatMessagesToPrefs()
 
+        // POP UP SCREEN ON INCOMING SOS
+        try {
+            triggerFullScreenNotification(context, alertTitle)
+
+            val launchIntent = context.packageManager.getLaunchIntentForPackage("com.example.connect")?.apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                putExtra("alert_msg", alertTitle)
+            }
+            if (launchIntent != null) {
+                context.startActivity(launchIntent)
+            }
+        } catch (e: Exception) {
+            // Ignore launch error
+        }
+
+        // PLAY SELECTED SIREN MUSIC AT MAX VOLUME
         try {
             AlarmAudioController.stopAllSound(context)
 
@@ -200,7 +273,8 @@ fun FamilySosAlertApp() {
             val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
             audioManager.setStreamVolume(AudioManager.STREAM_ALARM, maxVolume, 0)
 
-            val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            val alarmUri = RingtoneManager.getDefaultUri(selectedSoundType)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
                 ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
 
             val player = MediaPlayer().apply {
@@ -223,7 +297,7 @@ fun FamilySosAlertApp() {
             AlarmAudioController.mediaPlayer = player
         } catch (e: Exception) {
             try {
-                val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                val alarmUri = RingtoneManager.getDefaultUri(selectedSoundType)
                 val ringtone = RingtoneManager.getRingtone(context, alarmUri)
                 ringtone.play()
                 AlarmAudioController.activeRingtone = ringtone
@@ -231,12 +305,12 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // Send HTTP Cloud Request (Works across ANY 4G/5G/Wi-Fi Worldwide via Render.com!)
+    // Send 4G Mobile Data + Wi-Fi Global Cloud Request
     fun sendUdpSosAlert(alertText: String) {
         val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val timeNow = sdf.format(Date())
 
-        // Add to sender chat list
+        // Add to sender chat list (NO sound played locally on sender!)
         chatMessages.add(0, SosChatMessage(
             id = System.currentTimeMillis().toString(),
             senderName = if (isHuaweiDevice) "HUAWEI nova 13i" else "Honor X8a (Siz)",
@@ -247,12 +321,12 @@ fun FamilySosAlertApp() {
         saveChatMessagesToPrefs()
 
         coroutineScope.launch(Dispatchers.IO) {
-            // 1. Post to Global Render Cloud Relay Server
+            // 1. Post to Render Cloud Relay Server (Global 4G / 5G Mobile Data)
             try {
                 val url = URL(renderCloudUrl)
                 val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 2000
-                conn.readTimeout = 2000
+                conn.connectTimeout = 2500
+                conn.readTimeout = 2500
                 conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "application/json")
@@ -308,12 +382,12 @@ fun FamilySosAlertApp() {
             } catch (e: Exception) {}
 
             withContext(Dispatchers.Main) {
-                Toast.makeText(context, "🌐 GLOBAL CLOUD SIGNAL YUBORILDI!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "📡 4G MOBILE CLOUD SIGNAL YUBORILDI!", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
-    // Global Render Cloud Poller (Checks for Global Cloud SOS Alerts every 3 seconds)
+    // Global Render Cloud Poller (Fast 4G/5G Cloud Poller every 2 seconds)
     var lastCloudAlertId by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
         @Suppress("OPT_IN_USAGE")
@@ -343,7 +417,7 @@ fun FamilySosAlertApp() {
                             if (alertId.isNotBlank() && alertId != lastCloudAlertId && sender != mySenderName) {
                                 lastCloudAlertId = alertId
                                 withContext(Dispatchers.Main) {
-                                    triggerRecipientSiren(alertMsg, "Render Cloud ($sender)")
+                                    triggerRecipientSiren(alertMsg, "4G Cloud ($sender)")
                                 }
                             }
                         }
@@ -351,7 +425,7 @@ fun FamilySosAlertApp() {
                     conn.disconnect()
                 } catch (e: Exception) {}
 
-                kotlinx.coroutines.delay(3000)
+                kotlinx.coroutines.delay(2000)
             }
         }
     }
@@ -472,19 +546,23 @@ fun FamilySosAlertApp() {
                             .background(Color.Green)
                     )
                     Text(
-                        text = if (isHuaweiDevice) "📱 HUAWEI Terminal" else "📱 Honor X8a Boshqaruv",
+                        text = if (isHuaweiDevice) "📱 HUAWEI Terminal (4G/Wi-Fi)" else "📱 Honor X8a Boshqaruv",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp
                     )
                 }
 
-                Text(
-                    text = "🌐 GLOBAL CLOUD ONLINE",
-                    color = Color(0xFF81C784),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp
-                )
+                // SOS MUSIC SELECTOR BUTTON
+                Button(
+                    onClick = { showSoundSelectorModal = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2)),
+                    shape = RoundedCornerShape(6.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.height(28.dp)
+                ) {
+                    Text("🎵 Musiqani Tanlash", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -590,7 +668,7 @@ fun FamilySosAlertApp() {
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                     modifier = Modifier.height(48.dp)
                 ) {
-                    Text("🌐 YUBOR", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text("📡 YUBOR", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
             }
 
@@ -611,7 +689,7 @@ fun FamilySosAlertApp() {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("🔊 BALAND SIRENA CHALINMOQDA!", color = Color.Yellow, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                            Text("🔊 BALAND STANDART SOS SIRENA CHALINMOQDA!", color = Color.Yellow, fontWeight = FontWeight.Bold, fontSize = 10.sp)
                             Text(lastAlertText, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
 
@@ -668,6 +746,88 @@ fun FamilySosAlertApp() {
                     fontSize = 15.sp
                 )
             }
+        }
+
+        // SOS MUSIC SELECTOR MODAL DIALOG
+        if (showSoundSelectorModal) {
+            AlertDialog(
+                onDismissRequest = { showSoundSelectorModal = false },
+                containerColor = Color(0xFF1E222B),
+                title = {
+                    Text("🎵 SOS Sirena Musiqasini Tanlash", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("Keladigan SOS signal ovozi turini tanlang:", color = Color.LightGray, fontSize = 12.sp)
+
+                        // Option 1: Standart Baland Alarm
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (selectedSoundType == RingtoneManager.TYPE_ALARM) Color(0xFF1565C0) else Color(0xFF2B3242))
+                                .clickable {
+                                    selectedSoundType = RingtoneManager.TYPE_ALARM
+                                    prefs.edit().putInt("sos_siren_sound_type", RingtoneManager.TYPE_ALARM).apply()
+                                    Toast.makeText(context, "1-Standart Alarm Sirena Tanlandi", Toast.LENGTH_SHORT).show()
+                                }
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(if (selectedSoundType == RingtoneManager.TYPE_ALARM) "🔘 " else "⚪ ", fontSize = 14.sp)
+                            Text("🚨 1-Standart Baland Alarm Sirena", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+
+                        // Option 2: Bildirishnoma Musiqasi
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (selectedSoundType == RingtoneManager.TYPE_NOTIFICATION) Color(0xFF1565C0) else Color(0xFF2B3242))
+                                .clickable {
+                                    selectedSoundType = RingtoneManager.TYPE_NOTIFICATION
+                                    prefs.edit().putInt("sos_siren_sound_type", RingtoneManager.TYPE_NOTIFICATION).apply()
+                                    Toast.makeText(context, "2-Bildirishnoma Musiqasi Tanlandi", Toast.LENGTH_SHORT).show()
+                                }
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(if (selectedSoundType == RingtoneManager.TYPE_NOTIFICATION) "🔘 " else "⚪ ", fontSize = 14.sp)
+                            Text("🔔 2-Bildirishnoma Signal Musiqasi", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+
+                        // Option 3: Telefon Zvonok Musiqasi
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (selectedSoundType == RingtoneManager.TYPE_RINGTONE) Color(0xFF1565C0) else Color(0xFF2B3242))
+                                .clickable {
+                                    selectedSoundType = RingtoneManager.TYPE_RINGTONE
+                                    prefs.edit().putInt("sos_siren_sound_type", RingtoneManager.TYPE_RINGTONE).apply()
+                                    Toast.makeText(context, "3-Telefon Zvonok Musiqasi Tanlandi", Toast.LENGTH_SHORT).show()
+                                }
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(if (selectedSoundType == RingtoneManager.TYPE_RINGTONE) "🔘 " else "⚪ ", fontSize = 14.sp)
+                            Text("🎵 3-Telefon Zvonok Musiqasi", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { showSoundSelectorModal = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text("✅ TAYYOR (SAQLASH)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+                }
+            )
         }
     }
 }
