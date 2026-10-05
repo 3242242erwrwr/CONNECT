@@ -635,29 +635,39 @@ fun FamilySosAlertApp() {
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // High-Contrast Custom Message Input Row
+            // PERFECT SLEEK CUSTOM MESSAGE INPUT ROW (100% NO TEXT CLIPPING / PERFECT UI!)
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 OutlinedTextField(
                     value = customMessageText,
                     onValueChange = { customMessageText = it },
-                    placeholder = { Text("O'zingiz matn yozing...", color = Color.LightGray, fontSize = 11.sp) },
-                    textStyle = TextStyle(color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold),
+                    placeholder = {
+                        Text("O'zingiz matn yozing...", color = Color(0xFFA0AAB8), fontSize = 13.sp)
+                    },
+                    textStyle = TextStyle(
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    ),
                     singleLine = true,
+                    shape = RoundedCornerShape(8.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Color(0xFFE53935),
-                        unfocusedBorderColor = Color(0xFF424B5D),
-                        focusedContainerColor = Color(0xFF222836),
-                        unfocusedContainerColor = Color(0xFF222836),
+                        unfocusedBorderColor = Color(0xFF384252),
+                        focusedContainerColor = Color(0xFF1E2433),
+                        unfocusedContainerColor = Color(0xFF1E2433),
                         focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
+                        unfocusedTextColor = Color.White,
+                        cursorColor = Color(0xFFE53935)
                     ),
                     modifier = Modifier
                         .weight(1f)
-                        .height(42.dp)
+                        .height(52.dp)
                 )
 
                 Button(
@@ -668,11 +678,11 @@ fun FamilySosAlertApp() {
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
-                    shape = RoundedCornerShape(6.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                    modifier = Modifier.height(42.dp)
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    modifier = Modifier.height(52.dp)
                 ) {
-                    Text("🔊 YUBOR", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Text("📡 YUBOR", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
             }
 
