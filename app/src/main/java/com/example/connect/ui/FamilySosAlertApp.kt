@@ -10,7 +10,6 @@ import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.Ringtone
 import android.media.RingtoneManager
-import android.net.wifi.WifiManager
 import android.os.Build
 import android.widget.Toast
 import androidx.compose.foundation.background
@@ -38,18 +37,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
-import java.net.DatagramPacket
-import java.net.DatagramSocket
 import java.net.HttpURLConnection
-import java.net.InetAddress
-import java.net.ServerSocket
 import java.net.URL
-import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -118,9 +111,8 @@ fun FamilySosAlertApp() {
 
     val chatMessages = remember { mutableStateListOf<SosChatMessage>() }
 
-    // 100% Unlimited Local & Cloud Relays
-    val backupHttpbinUrl = "https://httpbin.org/post"
-    val targetIps = listOf("192.168.100.146", "192.168.100.144", "192.168.100.200", "192.168.43.1", "192.168.1.100")
+    // 100% Pure Cloud Server Endpoint (No Local IP Dependency!)
+    val renderCloudUrl = "https://connect-sos-cloud.onrender.com/sos"
 
     // STOP ALL SIREN SOUNDS INSTANTLY
     fun handleStopSirena() {
@@ -161,7 +153,7 @@ fun FamilySosAlertApp() {
 
             val builder = NotificationCompat.Builder(context, channelId)
                 .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-                .setContentTitle("🚨 SHOSHILINCH SOS SIGNAL!")
+                .setContentTitle("🚨 BULUTLI SERVER SOS SIGNAL!")
                 .setContentText(alertTitle)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
@@ -246,7 +238,7 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // 100% Guaranteed Multi-Channel SOS Sender Engine
+    // 100% Pure Cloud Server Sender Engine (Sends directly to Bulutli Server over 4G/5G!)
     fun sendUdpSosAlert(alertText: String) {
         val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val timeNow = sdf.format(Date())
@@ -254,7 +246,7 @@ fun FamilySosAlertApp() {
         val fullAlertMsg = "$alertText (Kimdan: $currentDeviceModel)"
 
         // Instant Touch Feedback
-        Toast.makeText(context, "📡 SOS TUGMASI BOSILDI — YUBORILMOQDA!", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "📡 BULUTLI SERVERGA YUBORILDI!", Toast.LENGTH_SHORT).show()
 
         // Add to sender chat list
         chatMessages.add(0, SosChatMessage(
@@ -268,46 +260,8 @@ fun FamilySosAlertApp() {
         ))
 
         coroutineScope.launch(Dispatchers.IO) {
-            // Channel 1: Local Wi-Fi HTTP Requests
-            targetIps.forEach { ip ->
-                try {
-                    val encodedMsg = URLEncoder.encode(fullAlertMsg, "UTF-8")
-                    val url = URL("http://$ip:8080/sos?msg=$encodedMsg")
-                    val conn = url.openConnection() as HttpURLConnection
-                    conn.connectTimeout = 400
-                    conn.readTimeout = 400
-                    conn.requestMethod = "GET"
-                    conn.responseCode
-                    conn.disconnect()
-                } catch (e: Exception) {}
-            }
-
-            // Channel 2: UDP Local Subnet Broadcast
             try {
-                val socket = DatagramSocket()
-                socket.broadcast = true
-                val payload = "SOS_PACKET::$myDeviceId::$fullAlertMsg"
-                val messageData = payload.toByteArray()
-
-                val targetAddresses = listOf(
-                    InetAddress.getByName("255.255.255.255"),
-                    InetAddress.getByName("192.168.100.255"),
-                    InetAddress.getByName("192.168.43.255")
-                )
-
-                targetAddresses.forEach { addr ->
-                    try {
-                        val packet = DatagramPacket(messageData, messageData.size, addr, 8888)
-                        socket.send(packet)
-                    } catch (e: Exception) {}
-                }
-
-                socket.close()
-            } catch (e: Exception) {}
-
-            // Channel 3: Backup Httpbin Endpoint
-            try {
-                val url = URL(backupHttpbinUrl)
+                val url = URL(renderCloudUrl)
                 val conn = url.openConnection() as HttpURLConnection
                 val jsonPayload = JSONObject().apply {
                     put("alert", fullAlertMsg)
@@ -315,12 +269,13 @@ fun FamilySosAlertApp() {
                 }.toString()
                 val payloadBytes = jsonPayload.toByteArray(Charsets.UTF_8)
 
-                conn.connectTimeout = 1500
-                conn.readTimeout = 1500
+                conn.connectTimeout = 3000
+                conn.readTimeout = 3000
                 conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.setFixedLengthStreamingMode(payloadBytes.size)
                 conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Connection", "close")
 
                 val os = conn.outputStream
                 os.write(payloadBytes)
@@ -332,89 +287,46 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // Embedded HTTP Direct Server (Port 8080) — 100% Direct Instant Delivery!
-    DisposableEffect(Unit) {
-        var isServerRunning = true
-        var serverSocket: ServerSocket? = null
+    // 100% Pure Cloud Server Listener (Polls Bulutli Server every 1000ms over 4G/5G/Wi-Fi)
+    var lastReceivedServerAlertId by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        @Suppress("OPT_IN_USAGE")
+        GlobalScope.launch(Dispatchers.IO) {
+            while (true) {
+                try {
+                    val url = URL(renderCloudUrl)
+                    val conn = url.openConnection() as HttpURLConnection
+                    conn.connectTimeout = 2500
+                    conn.readTimeout = 2500
+                    conn.requestMethod = "GET"
+                    conn.setRequestProperty("User-Agent", "Mozilla/5.0")
+                    conn.setRequestProperty("Cache-Control", "no-cache")
 
-        coroutineScope.launch(Dispatchers.IO) {
-            try {
-                serverSocket = ServerSocket(8080)
-                while (isServerRunning && serverSocket?.isClosed == false) {
-                    val client = serverSocket?.accept() ?: break
-                    val reader = BufferedReader(InputStreamReader(client.getInputStream()))
-                    val line = reader.readLine() ?: ""
+                    if (conn.responseCode == 200) {
+                        val reader = BufferedReader(InputStreamReader(conn.inputStream, "UTF-8"))
+                        val responseText = reader.readText()
+                        reader.close()
 
-                    if (line.contains("GET /sos")) {
-                        val msgParam = line.substringAfter("msg=").substringBefore(" ").substringBefore("&")
-                        val alertText = java.net.URLDecoder.decode(msgParam, "UTF-8")
-                        val clientIp = client.inetAddress.hostAddress ?: "Qurilma"
+                        val jsonObj = JSONObject(responseText)
+                        val latestAlert = jsonObj.optJSONObject("latest_alert")
+                        if (latestAlert != null) {
+                            val alertId = latestAlert.optString("id", "")
+                            val alertMsg = latestAlert.optString("alert", "")
+                            val sender = latestAlert.optString("sender", "")
 
-                        withContext(Dispatchers.Main) {
-                            triggerRecipientSiren(alertText, "Tarmoq ($clientIp)")
-                        }
-
-                        val out = client.getOutputStream()
-                        out.write("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK".toByteArray())
-                        out.flush()
-                    }
-                    client.close()
-                }
-            } catch (e: Exception) {}
-        }
-
-        onDispose {
-            isServerRunning = false
-            try { serverSocket?.close() } catch (e: Exception) {}
-        }
-    }
-
-    // Persistent UDP Listener Service (Port 8888) — 100% Direct Subnet Delivery!
-    DisposableEffect(Unit) {
-        var isListening = true
-        var socket: DatagramSocket? = null
-        var multicastLock: WifiManager.MulticastLock? = null
-
-        try {
-            val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-            multicastLock = wifiManager.createMulticastLock("connect_sos_lock").apply {
-                setReferenceCounted(true)
-                acquire()
-            }
-        } catch (e: Exception) {}
-
-        coroutineScope.launch(Dispatchers.IO) {
-            try {
-                socket = DatagramSocket(8888)
-                val buffer = ByteArray(1024)
-
-                while (isListening && socket?.isClosed == false) {
-                    val packet = DatagramPacket(buffer, buffer.size)
-                    socket?.receive(packet)
-                    val receivedMessage = String(packet.data, 0, packet.length)
-
-                    if (receivedMessage.startsWith("SOS_PACKET::")) {
-                        val parts = receivedMessage.split("::")
-                        if (parts.size >= 3) {
-                            val senderId = parts[1]
-                            val alertMsg = parts[2]
-
-                            if (senderId != myDeviceId) {
-                                val senderIp = packet.address.hostAddress ?: "Qurilma"
+                            if (alertId.isNotBlank() && alertId != lastReceivedServerAlertId && sender != currentDeviceModel) {
+                                lastReceivedServerAlertId = alertId
                                 withContext(Dispatchers.Main) {
-                                    triggerRecipientSiren(alertMsg, "Tarmoq ($senderIp)")
+                                    triggerRecipientSiren(alertMsg, "Bulutli Server ($sender)")
                                 }
                             }
                         }
                     }
-                }
-            } catch (e: Exception) {}
-        }
+                    conn.disconnect()
+                } catch (e: Exception) {}
 
-        onDispose {
-            isListening = false
-            try { socket?.close() } catch (e: Exception) {}
-            try { if (multicastLock?.isHeld == true) multicastLock.release() } catch (e: Exception) {}
+                kotlinx.coroutines.delay(1000)
+            }
         }
     }
 
@@ -448,7 +360,7 @@ fun FamilySosAlertApp() {
                             .background(Color.Green)
                     )
                     Text(
-                        text = "📱 $currentDeviceModel (Faol Online)",
+                        text = "📱 $currentDeviceModel (Bulutli Server 4G)",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp
