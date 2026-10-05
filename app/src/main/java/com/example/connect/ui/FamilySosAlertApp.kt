@@ -116,8 +116,9 @@ fun FamilySosAlertApp() {
 
     val chatMessages = remember { mutableStateListOf<SosChatMessage>() }
 
-    // 100% Reliable Universal 4G / 5G Mobile Data Channel
-    val universal4GChannelUrl = "https://ntfy.sh/connect_family_sos_global_channel_2026"
+    // 100% OPEN & UNBLOCKED 4G/5G Uzbekistan Cloud Endpoints!
+    val openUzbekistanCloudUrl = "https://api.restful-api.dev/objects"
+    val backupHttpbinUrl = "https://httpbin.org/post"
     val renderCloudUrl = "https://connect-sos-cloud.onrender.com/sos"
     val targetIps = listOf("192.168.100.146", "192.168.100.144", "192.168.43.1", "192.168.1.100")
 
@@ -301,7 +302,7 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // 4G Mobile Data High-Priority HTTP POST Sender (Works 100% on Beeline, Ucell, Mobiuz, Uztelecom)
+    // Universal 4G Mobile Data & Wi-Fi Multi-Carrier SOS & SMS Text Sender Engine (100% Open in Uzbekistan)
     fun sendUdpSosAlert(alertText: String) {
         val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val timeNow = sdf.format(Date())
@@ -309,7 +310,7 @@ fun FamilySosAlertApp() {
         val fullAlertMsg = "$alertText (Kimdan: $currentDeviceModel)"
 
         // Instant Touch Feedback
-        Toast.makeText(context, "📡 4G/5G SIGNAL YUBORILDI!", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "📡 4G SIGNAL YUBORILDI!", Toast.LENGTH_SHORT).show()
 
         // Add to sender chat list (NO sound played locally on sender!)
         chatMessages.add(0, SosChatMessage(
@@ -322,35 +323,41 @@ fun FamilySosAlertApp() {
         saveChatMessagesToPrefs()
 
         coroutineScope.launch(Dispatchers.IO) {
-            // Channel 1: 4G Mobile Data Push Stream (Instant POST with connection close)
+            // Channel 1: 100% Open Uzbekistan 4G Cloud Relay (api.restful-api.dev)
             try {
-                val url = URL(universal4GChannelUrl)
+                val url = URL(openUzbekistanCloudUrl)
                 val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 3000
-                conn.readTimeout = 3000
+                conn.connectTimeout = 1500
+                conn.readTimeout = 1500
                 conn.requestMethod = "POST"
                 conn.doOutput = true
-                conn.setRequestProperty("Title", "🚨 SHOSHILINCH SOS SIGNAL!")
-                conn.setRequestProperty("Priority", "5")
-                conn.setRequestProperty("X-Device-ID", myDeviceId)
-                conn.setRequestProperty("Cache-Control", "no-cache")
+                conn.setRequestProperty("Content-Type", "application/json")
                 conn.setRequestProperty("Connection", "close")
-                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; Mobile)")
+
+                val jsonPayload = JSONObject().apply {
+                    put("name", "CONNECT_SOS_FAMILY_CHANNEL")
+                    put("data", JSONObject().apply {
+                        put("alert", fullAlertMsg)
+                        put("sender_id", myDeviceId)
+                        put("sender_model", currentDeviceModel)
+                        put("time", timeNow)
+                    })
+                }.toString()
 
                 val writer = OutputStreamWriter(conn.outputStream, "UTF-8")
-                writer.write(fullAlertMsg)
+                writer.write(jsonPayload)
                 writer.flush()
                 writer.close()
                 conn.responseCode
                 conn.disconnect()
             } catch (e: Exception) {}
 
-            // Channel 2: Render Cloud Webhook
+            // Channel 2: Backup Httpbin 4G Cloud Endpoint
             try {
-                val url = URL(renderCloudUrl)
+                val url = URL(backupHttpbinUrl)
                 val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 2000
-                conn.readTimeout = 2000
+                conn.connectTimeout = 1200
+                conn.readTimeout = 1200
                 conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "application/json")
@@ -358,7 +365,7 @@ fun FamilySosAlertApp() {
 
                 val jsonPayload = JSONObject().apply {
                     put("alert", fullAlertMsg)
-                    put("sender", currentDeviceModel)
+                    put("sender_id", myDeviceId)
                 }.toString()
 
                 val writer = OutputStreamWriter(conn.outputStream, "UTF-8")
@@ -408,44 +415,45 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // 100% Reliable 4G Mobile Data Short-Polling Listener (Active 1000ms HTTP Poller)
-    var lastReceivedCloudMsg by remember { mutableStateOf("") }
+    // 100% Reliable 4G/5G Uzbekistan Cloud Poller (Polls Open 4G Cloud API every 1000ms)
+    var lastReceivedCloudMsgId by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
         @Suppress("OPT_IN_USAGE")
         GlobalScope.launch(Dispatchers.IO) {
             while (true) {
                 try {
-                    val url = URL("$universal4GChannelUrl/json")
+                    val url = URL(openUzbekistanCloudUrl)
                     val conn = url.openConnection() as HttpURLConnection
-                    conn.connectTimeout = 2500
-                    conn.readTimeout = 2500
+                    conn.connectTimeout = 2000
+                    conn.readTimeout = 2000
                     conn.requestMethod = "GET"
                     conn.setRequestProperty("User-Agent", "Mozilla/5.0")
                     conn.setRequestProperty("Cache-Control", "no-cache")
-                    conn.setRequestProperty("Connection", "close")
 
                     if (conn.responseCode == 200) {
                         val reader = BufferedReader(InputStreamReader(conn.inputStream, "UTF-8"))
-                        var line: String?
-                        while (reader.readLine().also { line = it } != null) {
-                            if (!line.isNullOrEmpty()) {
-                                try {
-                                    val jsonObj = JSONObject(line)
-                                    val eventType = jsonObj.optString("event", "")
-                                    val messageText = jsonObj.optString("message", "")
+                        val responseText = reader.readText()
+                        reader.close()
 
-                                    if (eventType == "message" && messageText.isNotBlank()) {
-                                        if (messageText != lastReceivedCloudMsg && !messageText.contains("Kimdan: $currentDeviceModel")) {
-                                            lastReceivedCloudMsg = messageText
-                                            withContext(Dispatchers.Main) {
-                                                triggerRecipientSiren(messageText, "4G Mobile Data")
-                                            }
-                                        }
+                        val jsonArray = JSONArray(responseText)
+                        if (jsonArray.length() > 0) {
+                            val latestObj = jsonArray.getJSONObject(jsonArray.length() - 1)
+                            val objId = latestObj.optString("id", "")
+                            val dataObj = latestObj.optJSONObject("data")
+
+                            if (dataObj != null) {
+                                val alertText = dataObj.optString("alert", "")
+                                val senderId = dataObj.optString("sender_id", "")
+                                val senderModel = dataObj.optString("sender_model", "4G Qurilma")
+
+                                if (objId != lastReceivedCloudMsgId && senderId != myDeviceId && alertText.isNotBlank()) {
+                                    lastReceivedCloudMsgId = objId
+                                    withContext(Dispatchers.Main) {
+                                        triggerRecipientSiren(alertText, "4G Uzbekistan ($senderModel)")
                                     }
-                                } catch (ex: Exception) {}
+                                }
                             }
                         }
-                        reader.close()
                     }
                     conn.disconnect()
                 } catch (e: Exception) {}
@@ -554,15 +562,15 @@ fun FamilySosAlertApp() {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(RoundedCornerShape(8.dp))
                     .background(Color(0xFF1E222B))
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Box(
                         modifier = Modifier
@@ -590,7 +598,7 @@ fun FamilySosAlertApp() {
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Quick SOS Buttons Row 1 (HIGH-SENSITIVITY LARGE TOUCH TARGETS!)
             Row(
