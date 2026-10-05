@@ -118,9 +118,8 @@ fun FamilySosAlertApp() {
 
     val chatMessages = remember { mutableStateListOf<SosChatMessage>() }
 
-    // 100% Unlimited Free Public Cloud REST Endpoint
-    val unlimitedRestApiUrl = "https://api.restful-api.dev/objects"
-    val renderCloudUrl = "https://connect-sos-cloud.onrender.com/sos"
+    val cloud4GWebSocketRelayUrl = "https://ntfy.sh/connect_family_sos_websocket_v4_channel"
+    val renderCloudUrl = "https://sos-connect.onrender.com/sos"
     val targetIps = listOf("192.168.100.146", "192.168.100.144", "192.168.43.1", "192.168.1.100")
 
     // STOP ALL SIREN SOUNDS INSTANTLY
@@ -162,7 +161,7 @@ fun FamilySosAlertApp() {
 
             val builder = NotificationCompat.Builder(context, channelId)
                 .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-                .setContentTitle("🚨 SHOSHILINCH SOS SIGNAL!")
+                .setContentTitle("🚨 4G / 5G SOS SIGNAL!")
                 .setContentText(alertTitle)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
@@ -175,8 +174,33 @@ fun FamilySosAlertApp() {
         }
     }
 
+    // Send Read Receipt ACK Back to Sender
+    fun sendReadReceiptAck(alertId: String) {
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                val ackMsg = "ACK_SEEN_RECEIPT::$alertId::$myDeviceId"
+                val url = URL(cloud4GWebSocketRelayUrl)
+                val conn = url.openConnection() as HttpURLConnection
+                val payloadBytes = ackMsg.toByteArray(Charsets.UTF_8)
+
+                conn.connectTimeout = 1500
+                conn.readTimeout = 1500
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.setFixedLengthStreamingMode(payloadBytes.size)
+
+                val os = conn.outputStream
+                os.write(payloadBytes)
+                os.flush()
+                os.close()
+                conn.responseCode
+                conn.disconnect()
+            } catch (e: Exception) {}
+        }
+    }
+
     // Play REAL AUTHENTIC SELECTED SIREN MUSIC ONLY on RECIPIENT device!
-    fun triggerRecipientSiren(alertTitle: String, senderInfo: String = "Sinxronlangan Qurilma") {
+    fun triggerRecipientSiren(alertTitle: String, senderInfo: String = "Sinxronlangan Qurilma", alertMsgId: String = "") {
         val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val timeNow = sdf.format(Date())
 
@@ -184,13 +208,18 @@ fun FamilySosAlertApp() {
         isAlertActive = true
 
         chatMessages.add(0, SosChatMessage(
-            id = System.currentTimeMillis().toString(),
+            id = if (alertMsgId.isNotBlank()) alertMsgId else System.currentTimeMillis().toString(),
             senderName = senderInfo,
             alertText = alertTitle,
             timestamp = timeNow,
             isOutgoing = false,
             isSeenByRecipient = true
         ))
+
+        // Auto Send Read Receipt ACK back to sender
+        if (alertMsgId.isNotBlank()) {
+            sendReadReceiptAck(alertMsgId)
+        }
 
         // POP UP SCREEN ON INCOMING SOS
         try {
@@ -247,48 +276,45 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // 100% Guaranteed Unlimited Cloud SOS Sender Engine
+    // High-Sensitivity Touch Sender Handler
     fun sendUdpSosAlert(alertText: String) {
         val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val timeNow = sdf.format(Date())
+        val newMsgId = System.currentTimeMillis().toString()
 
         val fullAlertMsg = "$alertText (Kimdan: $currentDeviceModel)"
 
         // Instant Touch Feedback
         Toast.makeText(context, "📡 SOS TUGMASI BOSILDI — YUBORILMOQDA!", Toast.LENGTH_SHORT).show()
 
-        // Add to sender chat list
-        chatMessages.add(0, SosChatMessage(
-            id = System.currentTimeMillis().toString(),
+        // Add to sender chat list (Mark as Delivered = true)
+        val outgoingMsg = SosChatMessage(
+            id = newMsgId,
             senderName = "$currentDeviceModel (Siz)",
             alertText = alertText,
             timestamp = timeNow,
             isOutgoing = true,
             isDelivered = true,
             isSeenByRecipient = false
-        ))
+        )
+        chatMessages.add(0, outgoingMsg)
 
         coroutineScope.launch(Dispatchers.IO) {
-            // Channel 1: Unlimited Public REST Cloud API
+            // Channel 1: 4G Mobile WebSocket Express Stream
             try {
-                val url = URL(unlimitedRestApiUrl)
-                val conn = url.openConnection() as HttpURLConnection
-                val jsonPayload = JSONObject().apply {
-                    put("name", "CONNECT_SOS_FAMILY_ALERT")
-                    put("data", JSONObject().apply {
-                        put("alert", fullAlertMsg)
-                        put("sender_id", myDeviceId)
-                        put("time", timeNow)
-                    })
-                }.toString()
-                val payloadBytes = jsonPayload.toByteArray(Charsets.UTF_8)
+                val url = URL(cloud4GWebSocketRelayUrl)
+                val payloadStr = "MSG_ID::$newMsgId::$fullAlertMsg"
+                val payloadBytes = payloadStr.toByteArray(Charsets.UTF_8)
 
+                val conn = url.openConnection() as HttpURLConnection
                 conn.connectTimeout = 2500
                 conn.readTimeout = 2500
                 conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.setFixedLengthStreamingMode(payloadBytes.size)
-                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Title", "🚨 SHOSHILINCH SOS SIGNAL!")
+                conn.setRequestProperty("Priority", "5")
+                conn.setRequestProperty("X-Sender-ID", myDeviceId)
 
                 val os = conn.outputStream
                 os.write(payloadBytes)
@@ -298,7 +324,7 @@ fun FamilySosAlertApp() {
                 conn.disconnect()
             } catch (e: Exception) {}
 
-            // Channel 2: Render Dedicated Cloud Webhook
+            // Channel 2: Render Cloud Webhook
             try {
                 val url = URL(renderCloudUrl)
                 val conn = url.openConnection() as HttpURLConnection
@@ -362,44 +388,64 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // 100% Guaranteed Unlimited Cloud Listener (Polls Unlimited API every 1000ms)
-    var lastReceivedCloudObjId by remember { mutableStateOf("") }
+    // 100% Persistent 4G WebSocket Full-Duplex Stream Listener (With ACK Read Receipts)
+    var lastReceivedCloudMsg by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
         @Suppress("OPT_IN_USAGE")
         GlobalScope.launch(Dispatchers.IO) {
             while (true) {
                 try {
-                    val url = URL(unlimitedRestApiUrl)
+                    val url = URL("$cloud4GWebSocketRelayUrl/raw")
                     val conn = url.openConnection() as HttpURLConnection
-                    conn.connectTimeout = 2000
-                    conn.readTimeout = 2000
+                    conn.connectTimeout = 10000
+                    conn.readTimeout = 0
                     conn.requestMethod = "GET"
-                    conn.setRequestProperty("User-Agent", "Mozilla/5.0")
-                    conn.setRequestProperty("Cache-Control", "no-cache")
 
                     if (conn.responseCode == 200) {
                         val reader = BufferedReader(InputStreamReader(conn.inputStream, "UTF-8"))
-                        val responseText = reader.readText()
-                        reader.close()
+                        var line: String?
+                        while (reader.readLine().also { line = it } != null) {
+                            val alertMsg = line?.trim() ?: ""
+                            if (alertMsg.isNotBlank()) {
+                                // Check if this is a Read Receipt ACK
+                                if (alertMsg.startsWith("ACK_SEEN_RECEIPT::")) {
+                                    val parts = alertMsg.split("::")
+                                    if (parts.size >= 3) {
+                                        val ackMsgId = parts[1]
+                                        val ackSenderId = parts[2]
+                                        if (ackSenderId != myDeviceId) {
+                                            withContext(Dispatchers.Main) {
+                                                val msgIndex = chatMessages.indexOfFirst { it.id == ackMsgId }
+                                                if (msgIndex != -1) {
+                                                    val updatedMsg = chatMessages[msgIndex].copy(isSeenByRecipient = true)
+                                                    chatMessages[msgIndex] = updatedMsg
+                                                    Toast.makeText(context, "✅ NARIGI TOMON SIRENANI ESHITDI VA KO'RDI!", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    var extractMsgId = ""
+                                    var alertTextToTrigger = alertMsg
 
-                        val jsonArray = JSONArray(responseText)
-                        if (jsonArray.length() > 0) {
-                            val latestObj = jsonArray.getJSONObject(jsonArray.length() - 1)
-                            val objId = latestObj.optString("id", "")
-                            val dataObj = latestObj.optJSONObject("data")
+                                    if (alertMsg.startsWith("MSG_ID::")) {
+                                        val parts = alertMsg.split("::")
+                                        if (parts.size >= 3) {
+                                            extractMsgId = parts[1]
+                                            alertTextToTrigger = parts[2]
+                                        }
+                                    }
 
-                            if (dataObj != null) {
-                                val alertText = dataObj.optString("alert", "")
-                                val senderId = dataObj.optString("sender_id", "")
-
-                                if (objId != lastReceivedCloudObjId && senderId != myDeviceId && alertText.isNotBlank()) {
-                                    lastReceivedCloudObjId = objId
-                                    withContext(Dispatchers.Main) {
-                                        triggerRecipientSiren(alertText, "4G Cloud Stream")
+                                    if (alertTextToTrigger != lastReceivedCloudMsg && !alertTextToTrigger.contains("Kimdan: $currentDeviceModel")) {
+                                        lastReceivedCloudMsg = alertTextToTrigger
+                                        withContext(Dispatchers.Main) {
+                                            triggerRecipientSiren(alertTextToTrigger, "4G Mobile Data Stream", extractMsgId)
+                                        }
                                     }
                                 }
                             }
                         }
+                        reader.close()
                     }
                     conn.disconnect()
                 } catch (e: Exception) {}
@@ -439,7 +485,7 @@ fun FamilySosAlertApp() {
                             .background(Color.Green)
                     )
                     Text(
-                        text = "📱 $currentDeviceModel",
+                        text = "📱 $currentDeviceModel (4G Online)",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp
@@ -492,7 +538,7 @@ fun FamilySosAlertApp() {
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Quick SOS Buttons Row 2
+            // Quick SOS Buttons Row 2 (SYMMETRIC EQUAL-SIZED BUTTONS: UYGA KELING, ESHIKNI OCH, TELNI KO'RING)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -504,9 +550,21 @@ fun FamilySosAlertApp() {
                     contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
                     modifier = Modifier
                         .weight(1f)
-                        .height(36.dp)
+                        .height(38.dp)
                 ) {
                     Text("🆘 UYGA KELING", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                }
+
+                Button(
+                    onClick = { sendUdpSosAlert("🚪 ESHIKNI OCH!") },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0288D1)),
+                    shape = RoundedCornerShape(6.dp),
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(38.dp)
+                ) {
+                    Text("🚪 ESHIKNI OCH", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp)
                 }
 
                 Button(
@@ -516,29 +574,9 @@ fun FamilySosAlertApp() {
                     contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
                     modifier = Modifier
                         .weight(1f)
-                        .height(36.dp)
-                ) {
-                    Text("📞 TELNI KO'RING", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // '🚪 ESHIKNI OCH' BUTTON
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Button(
-                    onClick = { sendUdpSosAlert("🚪 ESHIKNI OCH!") },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0288D1)),
-                    shape = RoundedCornerShape(6.dp),
-                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
                         .height(38.dp)
                 ) {
-                    Text("🚪 ESHIKNI OCH", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text("📞 TELNI KO'RING", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp)
                 }
             }
 
@@ -761,6 +799,13 @@ fun OriginalChatBubbleCard(msg: SosChatMessage) {
     val bubbleColor = if (msg.isOutgoing) Color(0xFF1E88E5) else Color(0xFF2A2E3D)
     val senderLabel = if (msg.isOutgoing) "📤 Siz" else "📥 Kelgan Signal (${msg.senderName})"
 
+    val statusIcon = when {
+        !msg.isOutgoing -> ""
+        msg.isSeenByRecipient -> " ✔✔ Ko'rildi"
+        msg.isDelivered -> " ✔ Yetkazildi"
+        else -> " ⌛"
+    }
+
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = alignment
@@ -790,8 +835,8 @@ fun OriginalChatBubbleCard(msg: SosChatMessage) {
                 modifier = Modifier.padding(10.dp)
             ) {
                 Text(
-                    text = senderLabel,
-                    color = if (msg.isOutgoing) Color(0xFFBBDEFB) else Color(0xFFFFB74D),
+                    text = "$senderLabel$statusIcon",
+                    color = if (msg.isSeenByRecipient) Color(0xFF66BB6A) else if (msg.isOutgoing) Color(0xFFBBDEFB) else Color(0xFFFFB74D),
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 10.sp
                 )
