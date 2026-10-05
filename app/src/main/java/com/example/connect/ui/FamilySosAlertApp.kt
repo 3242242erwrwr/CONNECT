@@ -116,10 +116,10 @@ fun FamilySosAlertApp() {
 
     val chatMessages = remember { mutableStateListOf<SosChatMessage>() }
 
-    // Instant Zero-Cold-Start 4G Mobile Data Relay Endpoints
+    // Green Active Deployed Render Server (CONNECT)
     val cloud4GWebSocketRelayUrl = "https://ntfy.sh/connect_family_sos_websocket_v4_channel"
     val openUzbekistanCloudUrl = "https://api.restful-api.dev/objects"
-    val renderCloudUrl = "https://sos-connect.onrender.com/sos"
+    val renderCloudUrl = "https://connect-sos-cloud.onrender.com/sos"
     val targetIps = listOf("192.168.100.146", "192.168.100.144", "192.168.43.1", "192.168.1.100")
 
     // Save Chat Messages to SharedPreferences
