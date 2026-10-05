@@ -116,8 +116,8 @@ fun FamilySosAlertApp() {
 
     val chatMessages = remember { mutableStateListOf<SosChatMessage>() }
 
-    // 100% Reliable Universal 4G / 5G Mobile Data Channel
-    val universal4GChannelUrl = "https://ntfy.sh/connect_family_sos_global_channel_2026"
+    // 100% Reliable Fresh High-Speed 4G / 5G Mobile Data Channel
+    val universal4GChannelUrl = "https://ntfy.sh/connect_family_v2026_express_channel"
     val renderCloudUrl = "https://connect-sos-cloud.onrender.com/sos"
     val targetIps = listOf("192.168.100.146", "192.168.100.144", "192.168.43.1", "192.168.1.100")
 
