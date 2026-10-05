@@ -538,7 +538,7 @@ fun FamilySosAlertApp() {
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Quick SOS Buttons Row 2 (INCLUDES THE NEW '🚪 ESHIKNI OCH' BUTTON DIRECTLY BELOW 'UYGA KELING'!)
+            // Quick SOS Buttons Row 2 (Symmetric Equal-Sized Buttons: UYGA KELING, TELNI KO'RING, ESHIKNI OCH)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -550,9 +550,21 @@ fun FamilySosAlertApp() {
                     contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
                     modifier = Modifier
                         .weight(1f)
-                        .height(36.dp)
+                        .height(38.dp)
                 ) {
                     Text("🆘 UYGA KELING", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                }
+
+                Button(
+                    onClick = { sendUdpSosAlert("🚪 ESHIKNI OCH!") },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0288D1)),
+                    shape = RoundedCornerShape(6.dp),
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(38.dp)
+                ) {
+                    Text("🚪 ESHIKNI OCH", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp)
                 }
 
                 Button(
@@ -562,29 +574,9 @@ fun FamilySosAlertApp() {
                     contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
                     modifier = Modifier
                         .weight(1f)
-                        .height(36.dp)
-                ) {
-                    Text("📞 TELNI KO'RING", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // NEW DEDICATED BUTTON ROW DIRECTLY BELOW 'UYGA KELING': '🚪 ESHIKNI OCH'
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Button(
-                    onClick = { sendUdpSosAlert("🚪 ESHIKNI OCH!") },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0288D1)),
-                    shape = RoundedCornerShape(6.dp),
-                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
                         .height(38.dp)
                 ) {
-                    Text("🚪 ESHIKNI OCH", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text("📞 TELNI KO'RING", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp)
                 }
             }
 
