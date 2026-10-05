@@ -11,42 +11,42 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.*
-import java.net.DatagramPacket
-import java.net.DatagramSocket
-import java.net.InetAddress
+import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
 
 class SosBackgroundService : Service() {
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private var serverSocket: DatagramSocket? = null
     private var mediaPlayer: MediaPlayer? = null
+    private val cloudRelayBase = "https://ntfy.sh/connect_family_sos_global_channel_2026"
+    private var lastReceivedMsg = ""
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         startForegroundServiceNotification()
-        startUdpListener()
+        start4GCloudListener()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == "ACTION_STOP_SIREN") {
-            stopSirenSound()
-        }
         return START_STICKY
     }
 
     private fun startForegroundServiceNotification() {
-        val channelId = "sos_background_service_channel"
+        val channelId = "sos_4g_background_service_channel"
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 channelId,
-                "Connect SOS Fon Xizmati",
+                "Connect 4G SOS Service",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "SOS tarmoq xizmati fonda uzluksiz ishlamoqda"
+                description = "4G/5G Mobil Internetda 24/7 SOS tinglovchi xizmat"
             }
             notificationManager.createNotificationChannel(channel)
         }
@@ -61,8 +61,8 @@ class SosBackgroundService : Service() {
 
         val notification = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setContentTitle("🚨 Connect SOS Network Faol")
-            .setContentText("24/7 Fonda shoshilinch signallarni tinglamoqda...")
+            .setContentTitle("📡 Connect 4G SOS Network Faol")
+            .setContentText("4G/5G Mobil internetda uzluksiz ishlamoqda...")
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
@@ -71,44 +71,51 @@ class SosBackgroundService : Service() {
         startForeground(9999, notification)
     }
 
-    private fun startUdpListener() {
+    private fun start4GCloudListener() {
+        val currentDeviceModel = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}"
+
         serviceScope.launch {
-            try {
-                serverSocket = DatagramSocket(8888)
-                val buffer = ByteArray(1024)
+            while (isActive) {
+                try {
+                    val url = URL("$cloudRelayBase/json")
+                    val conn = url.openConnection() as HttpURLConnection
+                    conn.connectTimeout = 3000
+                    conn.readTimeout = 3000
+                    conn.requestMethod = "GET"
+                    conn.setRequestProperty("Connection", "keep-alive")
+                    conn.setRequestProperty("Cache-Control", "no-cache")
 
-                while (serverSocket?.isClosed == false) {
-                    val packet = DatagramPacket(buffer, buffer.size)
-                    serverSocket?.receive(packet)
-                    val receivedMessage = String(packet.data, 0, packet.length)
+                    if (conn.responseCode == 200) {
+                        val reader = BufferedReader(InputStreamReader(conn.inputStream, "UTF-8"))
+                        var line: String?
+                        while (reader.readLine().also { line = it } != null) {
+                            if (!line.isNullOrEmpty()) {
+                                try {
+                                    val jsonObj = JSONObject(line)
+                                    val eventType = jsonObj.optString("event", "")
+                                    val messageText = jsonObj.optString("message", "")
 
-                    val myDeviceId = "CONNECT_DEVICE_ID"
-
-                    if (receivedMessage.startsWith("SOS_PACKET::")) {
-                        val parts = receivedMessage.split("::")
-                        if (parts.size >= 3) {
-                            val senderId = parts[1]
-                            val alertMsg = parts[2]
-
-                            if (senderId != myDeviceId) {
-                                triggerSirenAndNotification(alertMsg)
+                                    if (eventType == "message" && messageText.isNotBlank()) {
+                                        if (messageText != lastReceivedMsg && !messageText.contains("Kimdan: $currentDeviceModel")) {
+                                            lastReceivedMsg = messageText
+                                            triggerSirenAndNotification(messageText)
+                                        }
+                                    }
+                                } catch (ex: Exception) {}
                             }
                         }
-                    } else if (receivedMessage.startsWith("SOS_ALERT:")) {
-                        val alertMsg = receivedMessage.removePrefix("SOS_ALERT:")
-                        if (!packet.address.isLoopbackAddress) {
-                            triggerSirenAndNotification(alertMsg)
-                        }
+                        reader.close()
                     }
-                }
-            } catch (e: Exception) {
-                // Ignore socket bind errors if restarting
+                    conn.disconnect()
+                } catch (e: Exception) {}
+
+                delay(1000)
             }
         }
     }
 
     private fun triggerSirenAndNotification(alertMsg: String) {
-        // 1. Play Loud Alarm Siren Sound
+        // 1. Play Loud Alarm Siren Sound on 4G
         try {
             stopSirenSound()
 
@@ -136,11 +143,9 @@ class SosBackgroundService : Service() {
                 prepare()
                 start()
             }
-        } catch (e: Exception) {
-            // Sound fallback
-        }
+        } catch (e: Exception) {}
 
-        // 2. Full-Screen POPUP Activity to wake screen
+        // 2. Full-Screen POPUP Activity to wake screen on 4G
         try {
             val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -170,7 +175,7 @@ class SosBackgroundService : Service() {
 
             val notification = NotificationCompat.Builder(this, channelId)
                 .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-                .setContentTitle("🚨 SHOSHILINCH SOS SIGNAL!")
+                .setContentTitle("🚨 4G MOBILE SOS SIGNAL!")
                 .setContentText(alertMsg)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
@@ -179,9 +184,7 @@ class SosBackgroundService : Service() {
                 .build()
 
             notificationManager.notify(8888, notification)
-        } catch (e: Exception) {
-            // Ignore popup error
-        }
+        } catch (e: Exception) {}
     }
 
     private fun stopSirenSound() {
@@ -201,7 +204,6 @@ class SosBackgroundService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         serviceScope.cancel()
-        serverSocket?.close()
         stopSirenSound()
     }
 }
