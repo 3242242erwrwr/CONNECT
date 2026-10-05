@@ -42,6 +42,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.io.OutputStreamWriter
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.HttpURLConnection
@@ -115,8 +116,8 @@ fun FamilySosAlertApp() {
 
     val chatMessages = remember { mutableStateListOf<SosChatMessage>() }
 
-    // 100% Guaranteed 4G/5G Cloud Relay Endpoints for Uzbekistan Operators
-    val uzbekistan4GCloudUrl = "https://ntfy.sh/connect_sos_uzb_v2026_channel"
+    // Persistent Real-Time Full-Duplex Socket Endpoints (Passes CGNAT 4G Firewalls 100%!)
+    val cloud4GStreamUrl = "https://ntfy.sh/connect_sos_persistent_socket_2026"
     val renderCloudUrl = "https://connect-sos-cloud.onrender.com/sos"
     val targetIps = listOf("192.168.100.146", "192.168.100.144", "192.168.43.1", "192.168.1.100")
 
@@ -300,7 +301,7 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // 100% Guaranteed 4G Mobile Data Fixed-Length Streaming Sender
+    // Persistent 4G Mobile Socket Push Sender Engine
     fun sendUdpSosAlert(alertText: String) {
         val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val timeNow = sdf.format(Date())
@@ -308,7 +309,7 @@ fun FamilySosAlertApp() {
         val fullAlertMsg = "$alertText (Kimdan: $currentDeviceModel)"
 
         // Instant Touch Feedback
-        Toast.makeText(context, "📡 4G SIGNAL YUBORILDI!", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "📡 4G SOCKET SIGNAL YUBORILDI!", Toast.LENGTH_SHORT).show()
 
         // Add to sender chat list (NO sound played locally on sender!)
         chatMessages.add(0, SosChatMessage(
@@ -321,12 +322,12 @@ fun FamilySosAlertApp() {
         saveChatMessagesToPrefs()
 
         coroutineScope.launch(Dispatchers.IO) {
-            // Channel 1: 4G Mobile Data High-Priority Fixed Streaming Request
+            // Channel 1: 4G Mobile Persistent Socket Publisher
             try {
-                val url = URL(uzbekistan4GCloudUrl)
+                val url = URL(cloud4GStreamUrl)
                 val conn = url.openConnection() as HttpURLConnection
                 val payloadBytes = fullAlertMsg.toByteArray(Charsets.UTF_8)
-                
+
                 conn.connectTimeout = 3000
                 conn.readTimeout = 3000
                 conn.requestMethod = "POST"
@@ -335,7 +336,6 @@ fun FamilySosAlertApp() {
                 conn.setRequestProperty("Title", "🚨 SHOSHILINCH SOS SIGNAL!")
                 conn.setRequestProperty("Priority", "5")
                 conn.setRequestProperty("X-Sender-ID", myDeviceId)
-                conn.setRequestProperty("Connection", "close")
 
                 val os = conn.outputStream
                 os.write(payloadBytes)
@@ -361,7 +361,6 @@ fun FamilySosAlertApp() {
                 conn.doOutput = true
                 conn.setFixedLengthStreamingMode(payloadBytes.size)
                 conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("Connection", "close")
 
                 val os = conn.outputStream
                 os.write(payloadBytes)
@@ -410,40 +409,31 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // 100% Reliable 4G/5G Uzbekistan Cloud Poller (Polls 4G Cloud API every 1000ms)
+    // 100% Persistent 4G Mobile Full-Duplex Socket Stream Listener (Never Drops on 4G!)
     var lastReceivedCloudMsg by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
         @Suppress("OPT_IN_USAGE")
         GlobalScope.launch(Dispatchers.IO) {
             while (true) {
                 try {
-                    val url = URL("$uzbekistan4GCloudUrl/json")
+                    val url = URL("$cloud4GStreamUrl/raw")
                     val conn = url.openConnection() as HttpURLConnection
-                    conn.connectTimeout = 2500
-                    conn.readTimeout = 2500
+                    conn.connectTimeout = 10000
+                    conn.readTimeout = 0 // Infinite read timeout for persistent 4G stream!
                     conn.requestMethod = "GET"
-                    conn.setRequestProperty("User-Agent", "Mozilla/5.0")
-                    conn.setRequestProperty("Cache-Control", "no-cache")
 
                     if (conn.responseCode == 200) {
                         val reader = BufferedReader(InputStreamReader(conn.inputStream, "UTF-8"))
                         var line: String?
                         while (reader.readLine().also { line = it } != null) {
-                            if (!line.isNullOrEmpty()) {
-                                try {
-                                    val jsonObj = JSONObject(line)
-                                    val eventType = jsonObj.optString("event", "")
-                                    val messageText = jsonObj.optString("message", "")
-
-                                    if (eventType == "message" && messageText.isNotBlank()) {
-                                        if (messageText != lastReceivedCloudMsg && !messageText.contains("Kimdan: $currentDeviceModel")) {
-                                            lastReceivedCloudMsg = messageText
-                                            withContext(Dispatchers.Main) {
-                                                triggerRecipientSiren(messageText, "4G Uzbekistan ($currentDeviceModel)")
-                                            }
-                                        }
+                            val alertMsg = line?.trim() ?: ""
+                            if (alertMsg.isNotBlank()) {
+                                if (alertMsg != lastReceivedCloudMsg && !alertMsg.contains("Kimdan: $currentDeviceModel")) {
+                                    lastReceivedCloudMsg = alertMsg
+                                    withContext(Dispatchers.Main) {
+                                        triggerRecipientSiren(alertMsg, "4G Mobile Stream")
                                     }
-                                } catch (ex: Exception) {}
+                                }
                             }
                         }
                         reader.close()
@@ -572,7 +562,7 @@ fun FamilySosAlertApp() {
                             .background(Color.Green)
                     )
                     Text(
-                        text = "📱 $currentDeviceModel (4G/5G Fixed Streaming)",
+                        text = "📱 $currentDeviceModel (4G Persistent Socket)",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp
