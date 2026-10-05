@@ -63,6 +63,13 @@ data class SosChatMessage(
     var isSeenByRecipient: Boolean = false
 )
 
+data class ConnectedAndroidDevice(
+    val deviceId: String,
+    val deviceModel: String,
+    val ipAddress: String,
+    val lastSeenTime: Long = System.currentTimeMillis()
+)
+
 // Global Singleton References for 100% Guaranteed Instant Sound Stop
 object AlarmAudioController {
     var mediaPlayer: MediaPlayer? = null
@@ -111,12 +118,18 @@ fun FamilySosAlertApp() {
         mutableIntStateOf(prefs.getInt("sos_siren_sound_type", RingtoneManager.TYPE_ALARM))
     }
     var showSoundSelectorModal by remember { mutableStateOf(false) }
+    var showDeviceMenuModal by remember { mutableStateOf(false) }
+
+    // Target Selected Device ("ALL" = Barcha Qurilmalar, or specific Device ID/Model)
+    var selectedTargetDeviceId by remember { mutableStateOf("ALL") }
+    var selectedTargetDeviceName by remember { mutableStateOf("🌐 Barcha Qurilmalar (Hammasi)") }
 
     var isAlertActive by remember { mutableStateOf(false) }
     var lastAlertText by remember { mutableStateOf("") }
     var customMessageText by remember { mutableStateOf("") }
 
     val chatMessages = remember { mutableStateListOf<SosChatMessage>() }
+    val activeDevicesMap = remember { mutableStateMapOf<String, ConnectedAndroidDevice>() }
 
     val cloud4GWebSocketRelayUrl = "https://ntfy.sh/connect_family_sos_websocket_v4_channel"
     val renderCloudUrl = "https://sos-connect.onrender.com/sos"
@@ -276,21 +289,21 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // High-Sensitivity Touch Sender Handler
+    // Targeted SOS Sender Handler (Sends SOS specifically to selectedTargetDeviceId!)
     fun sendUdpSosAlert(alertText: String) {
         val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val timeNow = sdf.format(Date())
         val newMsgId = System.currentTimeMillis().toString()
 
-        val fullAlertMsg = "$alertText (Kimdan: $currentDeviceModel)"
+        val fullAlertMsg = "$alertText (Kimdan: $currentDeviceModel | Target: $selectedTargetDeviceId)"
 
         // Instant Touch Feedback
-        Toast.makeText(context, "📡 SOS TUGMASI BOSILDI — YUBORILMOQDA!", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "📡 SOS YUBORILMOQDA: $selectedTargetDeviceName!", Toast.LENGTH_SHORT).show()
 
-        // Add to sender chat list (Mark as Delivered = true)
+        // Add to sender chat list
         val outgoingMsg = SosChatMessage(
             id = newMsgId,
-            senderName = "$currentDeviceModel (Siz)",
+            senderName = "$currentDeviceModel (Siz ➔ $selectedTargetDeviceName)",
             alertText = alertText,
             timestamp = timeNow,
             isOutgoing = true,
@@ -303,7 +316,7 @@ fun FamilySosAlertApp() {
             // Channel 1: 4G Mobile WebSocket Express Stream
             try {
                 val url = URL(cloud4GWebSocketRelayUrl)
-                val payloadStr = "MSG_ID::$newMsgId::$fullAlertMsg"
+                val payloadStr = "TARGET_MSG::$selectedTargetDeviceId::$newMsgId::$fullAlertMsg"
                 val payloadBytes = payloadStr.toByteArray(Charsets.UTF_8)
 
                 val conn = url.openConnection() as HttpURLConnection
@@ -331,6 +344,7 @@ fun FamilySosAlertApp() {
                 val jsonPayload = JSONObject().apply {
                     put("alert", fullAlertMsg)
                     put("sender", currentDeviceModel)
+                    put("target", selectedTargetDeviceId)
                 }.toString()
                 val payloadBytes = jsonPayload.toByteArray(Charsets.UTF_8)
 
@@ -388,7 +402,36 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // 100% Persistent 4G WebSocket Full-Duplex Stream Listener (With ACK Read Receipts)
+    // Broadcast Heartbeat Pulse every 3 seconds so others see this Android device in their menu list!
+    LaunchedEffect(Unit) {
+        coroutineScope.launch(Dispatchers.IO) {
+            while (true) {
+                try {
+                    val url = URL(cloud4GWebSocketRelayUrl)
+                    val heartbeatPayload = "HEARTBEAT_PULSE::$myDeviceId::$currentDeviceModel"
+                    val payloadBytes = heartbeatPayload.toByteArray(Charsets.UTF_8)
+
+                    val conn = url.openConnection() as HttpURLConnection
+                    conn.connectTimeout = 1500
+                    conn.readTimeout = 1500
+                    conn.requestMethod = "POST"
+                    conn.doOutput = true
+                    conn.setFixedLengthStreamingMode(payloadBytes.size)
+
+                    val os = conn.outputStream
+                    os.write(payloadBytes)
+                    os.flush()
+                    os.close()
+                    conn.responseCode
+                    conn.disconnect()
+                } catch (e: Exception) {}
+
+                kotlinx.coroutines.delay(3500)
+            }
+        }
+    }
+
+    // 100% Persistent 4G WebSocket Full-Duplex Stream Listener (With Targeted Device Filtering!)
     var lastReceivedCloudMsg by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
         @Suppress("OPT_IN_USAGE")
@@ -407,8 +450,26 @@ fun FamilySosAlertApp() {
                         while (reader.readLine().also { line = it } != null) {
                             val alertMsg = line?.trim() ?: ""
                             if (alertMsg.isNotBlank()) {
-                                // Check if this is a Read Receipt ACK
-                                if (alertMsg.startsWith("ACK_SEEN_RECEIPT::")) {
+                                // 1. Heartbeat Pulse Received
+                                if (alertMsg.startsWith("HEARTBEAT_PULSE::")) {
+                                    val parts = alertMsg.split("::")
+                                    if (parts.size >= 3) {
+                                        val hbDevId = parts[1]
+                                        val hbModel = parts[2]
+                                        if (hbDevId != myDeviceId) {
+                                            withContext(Dispatchers.Main) {
+                                                activeDevicesMap[hbDevId] = ConnectedAndroidDevice(
+                                                    deviceId = hbDevId,
+                                                    deviceModel = hbModel,
+                                                    ipAddress = "4G/Wi-Fi Cloud",
+                                                    lastSeenTime = System.currentTimeMillis()
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                                // 2. Read Receipt ACK Received
+                                else if (alertMsg.startsWith("ACK_SEEN_RECEIPT::")) {
                                     val parts = alertMsg.split("::")
                                     if (parts.size >= 3) {
                                         val ackMsgId = parts[1]
@@ -424,22 +485,32 @@ fun FamilySosAlertApp() {
                                             }
                                         }
                                     }
-                                } else {
+                                }
+                                // 3. Targeted SOS Message Received
+                                else {
+                                    var targetDeviceId = "ALL"
                                     var extractMsgId = ""
                                     var alertTextToTrigger = alertMsg
 
-                                    if (alertMsg.startsWith("MSG_ID::")) {
+                                    if (alertMsg.startsWith("TARGET_MSG::")) {
                                         val parts = alertMsg.split("::")
-                                        if (parts.size >= 3) {
-                                            extractMsgId = parts[1]
-                                            alertTextToTrigger = parts[2]
+                                        if (parts.size >= 4) {
+                                            targetDeviceId = parts[1]
+                                            extractMsgId = parts[2]
+                                            alertTextToTrigger = parts[3]
                                         }
                                     }
 
-                                    if (alertTextToTrigger != lastReceivedCloudMsg && !alertTextToTrigger.contains("Kimdan: $currentDeviceModel")) {
+                                    // Filter by targeted device: Trigger ONLY if target is "ALL" OR target matches MY device ID / Model!
+                                    val isMatchForMe = targetDeviceId == "ALL" ||
+                                            targetDeviceId == myDeviceId ||
+                                            alertTextToTrigger.contains(currentDeviceModel, ignoreCase = true) ||
+                                            targetDeviceId.contains(currentDeviceModel, ignoreCase = true)
+
+                                    if (isMatchForMe && alertTextToTrigger != lastReceivedCloudMsg && !alertTextToTrigger.contains("Kimdan: $currentDeviceModel")) {
                                         lastReceivedCloudMsg = alertTextToTrigger
                                         withContext(Dispatchers.Main) {
-                                            triggerRecipientSiren(alertTextToTrigger, "4G Mobile Data Stream", extractMsgId)
+                                            triggerRecipientSiren(alertTextToTrigger, "4G Stream", extractMsgId)
                                         }
                                     }
                                 }
@@ -464,49 +535,80 @@ fun FamilySosAlertApp() {
                 .fillMaxSize()
                 .padding(10.dp)
         ) {
-            // Universal Header Bar
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0xFF1E222B))
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            // Header Bar displaying CURRENT DEVICE + SELECTED TARGET RECIPIENT DEVICE NAME!
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E222B)),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                Column(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(Color.Green)
-                    )
-                    Text(
-                        text = "📱 $currentDeviceModel (4G Online)",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp
-                    )
-                }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.Green)
+                            )
+                            Text(
+                                text = "📱 Siz: $currentDeviceModel",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
+                            )
+                        }
 
-                // SOS MUSIC SELECTOR BUTTON
-                Button(
-                    onClick = { showSoundSelectorModal = true },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2)),
-                    shape = RoundedCornerShape(4.dp),
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                    modifier = Modifier.height(26.dp)
-                ) {
-                    Text("🎵 Musiqa Tanlash", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        // SOS MUSIC SELECTOR BUTTON
+                        Button(
+                            onClick = { showSoundSelectorModal = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2)),
+                            shape = RoundedCornerShape(4.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                            modifier = Modifier.height(26.dp)
+                        ) {
+                            Text("🎵 Musiqa Tanlash", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // HIGHLIGHTED SELECTED TARGET DEVICE NAME INDICATOR BAR
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFF2E374A))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "🎯 QABUL QILUVCHI: ",
+                            color = Color(0xFFFFB74D),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp
+                        )
+                        Text(
+                            text = selectedTargetDeviceName,
+                            color = Color(0xFF81C784),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp
+                        )
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Quick SOS Buttons Row 1 (HIGH-SENSITIVITY TOUCH BUTTONS WITH INSTANT FEEDBACK!)
+            // Quick SOS Buttons Row 1 (HIGH-SENSITIVITY TOUCH BUTTONS!)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -538,7 +640,7 @@ fun FamilySosAlertApp() {
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Quick SOS Buttons Row 2 (Symmetric Equal-Sized Buttons: UYGA KELING, TELNI KO'RING, ESHIKNI OCH)
+            // Quick SOS Buttons Row 2
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -550,21 +652,9 @@ fun FamilySosAlertApp() {
                     contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
                     modifier = Modifier
                         .weight(1f)
-                        .height(38.dp)
+                        .height(36.dp)
                 ) {
                     Text("🆘 UYGA KELING", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp)
-                }
-
-                Button(
-                    onClick = { sendUdpSosAlert("🚪 ESHIKNI OCH!") },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0288D1)),
-                    shape = RoundedCornerShape(6.dp),
-                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(38.dp)
-                ) {
-                    Text("🚪 ESHIKNI OCH", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp)
                 }
 
                 Button(
@@ -574,15 +664,35 @@ fun FamilySosAlertApp() {
                     contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
                     modifier = Modifier
                         .weight(1f)
-                        .height(38.dp)
+                        .height(36.dp)
                 ) {
                     Text("📞 TELNI KO'RING", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp)
                 }
             }
 
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // '🚪 ESHIKNI OCH' BUTTON
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Button(
+                    onClick = { sendUdpSosAlert("🚪 ESHIKNI OCH!") },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0288D1)),
+                    shape = RoundedCornerShape(6.dp),
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(38.dp)
+                ) {
+                    Text("🚪 ESHIKNI OCH", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
+            }
+
             Spacer(modifier = Modifier.height(6.dp))
 
-            // High-Contrast Custom Message Input Row
+            // Custom Message Input Row
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -691,6 +801,25 @@ fun FamilySosAlertApp() {
 
             Spacer(modifier = Modifier.height(6.dp))
 
+            // PROMINENT DEVICE PICKER MENU BUTTON DIRECTLY ABOVE STOP SIRENA!
+            Button(
+                onClick = { showDeviceMenuModal = true },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0)),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+            ) {
+                Text(
+                    text = "📱 QURILMALAR MENYUSI (TANLAB YUBORISH) ➔",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
             // PERMANENT ALWAYS-VISIBLE PROMINENT STOP BUTTON AT THE VERY BOTTOM OF THE SCREEN!
             Button(
                 onClick = { handleStopSirena() },
@@ -707,6 +836,99 @@ fun FamilySosAlertApp() {
                     fontSize = 15.sp
                 )
             }
+        }
+
+        // DEVICE SELECTION MODAL MENU DIALOG
+        if (showDeviceMenuModal) {
+            AlertDialog(
+                onDismissRequest = { showDeviceMenuModal = false },
+                containerColor = Color(0xFF1E222B),
+                title = {
+                    Text("📱 Qabul Qiluvchi Android Qurilmani Tanlang", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("SOS xabar qaysi Android telefoniga borishini tanlang:", color = Color.LightGray, fontSize = 11.sp)
+
+                        // Option 0: Barcha Qurilmalar (Hammasiga)
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = if (selectedTargetDeviceId == "ALL") Color(0xFF2E7D32) else Color(0xFF2B3242)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selectedTargetDeviceId = "ALL"
+                                    selectedTargetDeviceName = "🌐 Barcha Qurilmalar (Hammasi)"
+                                    showDeviceMenuModal = false
+                                    Toast.makeText(context, "🌐 Barcha Qurilmalar Tanlandi", Toast.LENGTH_SHORT).show()
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(if (selectedTargetDeviceId == "ALL") "🔘 " else "⚪ ", fontSize = 14.sp)
+                                Column {
+                                    Text("🌐 Barcha Qurilmalar (Hammasiga Baravar)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    Text("SOS barcha ilova o'rnatilgan telefonlarga boradi", color = Color.LightGray, fontSize = 10.sp)
+                                }
+                            }
+                        }
+
+                        // Preset Target Devices Options
+                        val defaultDeviceList = listOf(
+                            "HUAWEI nova 13i",
+                            "Honor X8a",
+                            "Samsung Galaxy A52",
+                            "Xiaomi / Redmi"
+                        )
+
+                        defaultDeviceList.forEach { modelName ->
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = if (selectedTargetDeviceName == modelName) Color(0xFF1565C0) else Color(0xFF2B3242)),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        selectedTargetDeviceId = modelName
+                                        selectedTargetDeviceName = modelName
+                                        showDeviceMenuModal = false
+                                        Toast.makeText(context, "🎯 Tanlandi: $modelName", Toast.LENGTH_SHORT).show()
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(if (selectedTargetDeviceName == modelName) "🔘 " else "⚪ ", fontSize = 14.sp)
+                                    Column {
+                                        Text("📱 $modelName", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                        Text("SOS faqat $modelName ga boradi", color = Color.LightGray, fontSize = 10.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { showDeviceMenuModal = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text("✅ TAYYOR (SAQLASH)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    }
+                }
+            )
         }
 
         // SOS MUSIC SELECTOR MODAL DIALOG
