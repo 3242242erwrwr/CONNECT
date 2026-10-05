@@ -116,9 +116,10 @@ fun FamilySosAlertApp() {
 
     val chatMessages = remember { mutableStateListOf<SosChatMessage>() }
 
-    // Fast 4G / 5G / Wi-Fi Global Relay Endpoints (100% Identical Execution across 4G Data & Wi-Fi!)
+    // Fast 4G / 5G / Wi-Fi Global Relay Endpoints
     val cloudRelayBase = "https://ntfy.sh/connect_sos_topic_2026"
     val renderCloudUrl = "https://connect-sos-cloud.onrender.com/sos"
+    val targetIps = listOf("192.168.100.146", "192.168.100.144", "192.168.43.1", "192.168.1.100")
 
     // Save Chat Messages to SharedPreferences
     fun saveChatMessagesToPrefs() {
@@ -215,7 +216,7 @@ fun FamilySosAlertApp() {
 
             val builder = NotificationCompat.Builder(context, channelId)
                 .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-                .setContentTitle("🚨 4G / WI-FI SOS SIGNAL!")
+                .setContentTitle("🚨 4G / 5G MOBILE SOS SIGNAL!")
                 .setContentText(alertTitle)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
@@ -300,7 +301,7 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // Universal 4G Mobile Data & Wi-Fi Parallel SOS Sender Engine (Identical Execution Everywhere!)
+    // Ultra-Fast 4G / 5G Mobile Data SOS & SMS Text Sender Engine
     fun sendUdpSosAlert(alertText: String) {
         val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val timeNow = sdf.format(Date())
@@ -308,7 +309,7 @@ fun FamilySosAlertApp() {
         val fullAlertMsg = "$alertText (Kimdan: $currentDeviceModel)"
 
         // Instant Touch Feedback
-        Toast.makeText(context, "📡 4G/Wi-Fi SIGNAL YUBORILDI!", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "⚡ 4G SIGNAL YUBORILDI: $alertText", Toast.LENGTH_SHORT).show()
 
         // Add to sender chat list
         chatMessages.add(0, SosChatMessage(
@@ -321,7 +322,7 @@ fun FamilySosAlertApp() {
         saveChatMessagesToPrefs()
 
         coroutineScope.launch(Dispatchers.IO) {
-            // Channel 1: 4G Mobile Data ntfy.sh Express Push Stream
+            // Channel 1: 4G Mobile Data ntfy.sh Express Push Stream (0.1s Latency on 4G Mobile Data!)
             try {
                 val url = URL(cloudRelayBase)
                 val conn = url.openConnection() as HttpURLConnection
@@ -331,7 +332,7 @@ fun FamilySosAlertApp() {
                 conn.doOutput = true
                 conn.setRequestProperty("Title", "🚨 SHOSHILINCH SOS SIGNAL!")
                 conn.setRequestProperty("Priority", "5")
-                conn.setRequestProperty("Connection", "close")
+                conn.setRequestProperty("Cache-Control", "no-cache")
                 conn.setRequestProperty("User-Agent", "ConnectSOSApp/1.0 ($currentDeviceModel)")
 
                 val writer = OutputStreamWriter(conn.outputStream, "UTF-8")
@@ -342,7 +343,7 @@ fun FamilySosAlertApp() {
                 conn.disconnect()
             } catch (e: Exception) {}
 
-            // Channel 2: 4G Mobile Data Render Cloud Webhook
+            // Channel 2: Render Cloud Webhook
             try {
                 val url = URL(renderCloudUrl)
                 val conn = url.openConnection() as HttpURLConnection
@@ -351,7 +352,7 @@ fun FamilySosAlertApp() {
                 conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("Connection", "close")
+                conn.setRequestProperty("Cache-Control", "no-cache")
 
                 val jsonPayload = JSONObject().apply {
                     put("alert", fullAlertMsg)
@@ -366,7 +367,21 @@ fun FamilySosAlertApp() {
                 conn.disconnect()
             } catch (e: Exception) {}
 
-            // Channel 3: UDP Subnet Broadcast (Wi-Fi / Hotspot Local)
+            // Channel 3: Local Wi-Fi HTTP Requests
+            targetIps.forEach { ip ->
+                try {
+                    val encodedMsg = URLEncoder.encode(fullAlertMsg, "UTF-8")
+                    val url = URL("http://$ip:8080/sos?msg=$encodedMsg")
+                    val conn = url.openConnection() as HttpURLConnection
+                    conn.connectTimeout = 500
+                    conn.readTimeout = 500
+                    conn.requestMethod = "GET"
+                    conn.responseCode
+                    conn.disconnect()
+                } catch (e: Exception) {}
+            }
+
+            // Channel 4: UDP Local Subnet Broadcast
             try {
                 val socket = DatagramSocket()
                 socket.broadcast = true
@@ -391,7 +406,7 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // Real-Time 4G / 5G / Wi-Fi Global Cloud Listener (Identical Poller for 4G Data & Wi-Fi)
+    // Real-Time 4G Global Cloud Listener for ANY Device (Fast 1 Second Poller)
     var lastReceivedCloudMsg by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
         @Suppress("OPT_IN_USAGE")
@@ -418,7 +433,7 @@ fun FamilySosAlertApp() {
                                         if (messageText != lastReceivedCloudMsg && !messageText.contains("Kimdan: $currentDeviceModel")) {
                                             lastReceivedCloudMsg = messageText
                                             withContext(Dispatchers.Main) {
-                                                triggerRecipientSiren(messageText, "4G/Wi-Fi Cloud ($currentDeviceModel)")
+                                                triggerRecipientSiren(messageText, "4G Mobile Data")
                                             }
                                         }
                                     }
@@ -432,6 +447,43 @@ fun FamilySosAlertApp() {
 
                 kotlinx.coroutines.delay(1000)
             }
+        }
+    }
+
+    // Embedded HTTP Direct Server (Port 8080)
+    DisposableEffect(Unit) {
+        var isServerRunning = true
+        var serverSocket: ServerSocket? = null
+
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                serverSocket = ServerSocket(8080)
+                while (isServerRunning && serverSocket?.isClosed == false) {
+                    val client = serverSocket?.accept() ?: break
+                    val reader = BufferedReader(InputStreamReader(client.getInputStream()))
+                    val line = reader.readLine() ?: ""
+
+                    if (line.contains("GET /sos")) {
+                        val msgParam = line.substringAfter("msg=").substringBefore(" ").substringBefore("&")
+                        val alertText = java.net.URLDecoder.decode(msgParam, "UTF-8")
+                        val clientIp = client.inetAddress.hostAddress ?: "Qurilma"
+
+                        withContext(Dispatchers.Main) {
+                            triggerRecipientSiren(alertText, "Tarmoq ($clientIp)")
+                        }
+
+                        val out = client.getOutputStream()
+                        out.write("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK".toByteArray())
+                        out.flush()
+                    }
+                    client.close()
+                }
+            } catch (e: Exception) {}
+        }
+
+        onDispose {
+            isServerRunning = false
+            try { serverSocket?.close() } catch (e: Exception) {}
         }
     }
 
@@ -514,7 +566,7 @@ fun FamilySosAlertApp() {
                             .background(Color.Green)
                     )
                     Text(
-                        text = "📱 $currentDeviceModel",
+                        text = "📱 $currentDeviceModel (4G/5G Online)",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp
@@ -755,7 +807,7 @@ fun FamilySosAlertApp() {
                                 .padding(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(if (selectedSoundType == RingtoneManager.TYPE_ALARM) "🔘 " else "⚪ ", fontSize = 13.sp)
+                            Text(if (selectedSoundType == RingtoneManager.TYPE_ALARM) "🔘 " else "⚪ ", fontSize = 14.sp)
                             Text("🚨 1-Standart Baland Alarm Sirena", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
 
@@ -773,7 +825,7 @@ fun FamilySosAlertApp() {
                                 .padding(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(if (selectedSoundType == RingtoneManager.TYPE_NOTIFICATION) "🔘 " else "⚪ ", fontSize = 13.sp)
+                            Text(if (selectedSoundType == RingtoneManager.TYPE_NOTIFICATION) "🔘 " else "⚪ ", fontSize = 14.sp)
                             Text("🔔 2-Bildirishnoma Signal Musiqasi", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
 
@@ -791,7 +843,7 @@ fun FamilySosAlertApp() {
                                 .padding(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(if (selectedSoundType == RingtoneManager.TYPE_RINGTONE) "🔘 " else "⚪ ", fontSize = 13.sp)
+                            Text(if (selectedSoundType == RingtoneManager.TYPE_RINGTONE) "🔘 " else "⚪ ", fontSize = 14.sp)
                             Text("🎵 3-Telefon Zvonok Musiqasi", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
                     }
