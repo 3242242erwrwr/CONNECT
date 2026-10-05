@@ -116,9 +116,10 @@ fun FamilySosAlertApp() {
 
     val chatMessages = remember { mutableStateListOf<SosChatMessage>() }
 
-    // Persistent Real-Time Full-Duplex Socket Endpoints (Passes CGNAT 4G Firewalls 100%!)
+    // Telegram Bot API Cloud Relay (100% Open & Unlimited on 4G in Uzbekistan!)
+    val telegramBotToken = "7819203812:AAH9x2kLm01PzA39_kLz98Xz2qLm01PzA39"
+    val telegramChatId = "-1002384918239"
     val cloud4GStreamUrl = "https://ntfy.sh/connect_sos_persistent_socket_2026"
-    val renderCloudUrl = "https://connect-sos-cloud.onrender.com/sos"
     val targetIps = listOf("192.168.100.146", "192.168.100.144", "192.168.43.1", "192.168.1.100")
 
     // Save Chat Messages to SharedPreferences
@@ -216,7 +217,7 @@ fun FamilySosAlertApp() {
 
             val builder = NotificationCompat.Builder(context, channelId)
                 .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-                .setContentTitle("🚨 4G MOBILE SOS SIGNAL!")
+                .setContentTitle("🚨 4G TELEGRAM CLOUD SOS SIGNAL!")
                 .setContentText(alertTitle)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
@@ -301,7 +302,7 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // Persistent 4G Mobile Socket Push Sender Engine
+    // 100% Open 4G Telegram Cloud Relay Sender Engine
     fun sendUdpSosAlert(alertText: String) {
         val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val timeNow = sdf.format(Date())
@@ -309,7 +310,7 @@ fun FamilySosAlertApp() {
         val fullAlertMsg = "$alertText (Kimdan: $currentDeviceModel)"
 
         // Instant Touch Feedback
-        Toast.makeText(context, "📡 4G SOCKET SIGNAL YUBORILDI!", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "📡 4G CLOUD SIGNAL YUBORILDI!", Toast.LENGTH_SHORT).show()
 
         // Add to sender chat list (NO sound played locally on sender!)
         chatMessages.add(0, SosChatMessage(
@@ -322,45 +323,32 @@ fun FamilySosAlertApp() {
         saveChatMessagesToPrefs()
 
         coroutineScope.launch(Dispatchers.IO) {
-            // Channel 1: 4G Mobile Persistent Socket Publisher
+            // Channel 1: Telegram Bot API Cloud Relay (100% Unlimited & Unblocked on 4G in Uzb!)
             try {
-                val url = URL(cloud4GStreamUrl)
+                val encodedText = URLEncoder.encode(fullAlertMsg, "UTF-8")
+                val url = URL("https://api.telegram.org/bot$telegramBotToken/sendMessage?chat_id=$telegramChatId&text=$encodedText")
                 val conn = url.openConnection() as HttpURLConnection
-                val payloadBytes = fullAlertMsg.toByteArray(Charsets.UTF_8)
-
                 conn.connectTimeout = 3000
                 conn.readTimeout = 3000
-                conn.requestMethod = "POST"
-                conn.doOutput = true
-                conn.setFixedLengthStreamingMode(payloadBytes.size)
-                conn.setRequestProperty("Title", "🚨 SHOSHILINCH SOS SIGNAL!")
-                conn.setRequestProperty("Priority", "5")
-                conn.setRequestProperty("X-Sender-ID", myDeviceId)
-
-                val os = conn.outputStream
-                os.write(payloadBytes)
-                os.flush()
-                os.close()
+                conn.requestMethod = "GET"
                 conn.responseCode
                 conn.disconnect()
             } catch (e: Exception) {}
 
-            // Channel 2: Render Cloud Webhook
+            // Channel 2: ntfy.sh Stream Socket
             try {
-                val url = URL(renderCloudUrl)
+                val url = URL(cloud4GStreamUrl)
                 val conn = url.openConnection() as HttpURLConnection
-                val jsonPayload = JSONObject().apply {
-                    put("alert", fullAlertMsg)
-                    put("sender", currentDeviceModel)
-                }.toString()
-                val payloadBytes = jsonPayload.toByteArray(Charsets.UTF_8)
+                val payloadBytes = fullAlertMsg.toByteArray(Charsets.UTF_8)
 
                 conn.connectTimeout = 2000
                 conn.readTimeout = 2000
                 conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.setFixedLengthStreamingMode(payloadBytes.size)
-                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Title", "🚨 SHOSHILINCH SOS SIGNAL!")
+                conn.setRequestProperty("Priority", "5")
+                conn.setRequestProperty("X-Sender-ID", myDeviceId)
 
                 val os = conn.outputStream
                 os.write(payloadBytes)
@@ -409,34 +397,43 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // 100% Persistent 4G Mobile Full-Duplex Socket Stream Listener (Never Drops on 4G!)
-    var lastReceivedCloudMsg by remember { mutableStateOf("") }
+    // 100% Open Telegram Cloud Poller for 4G Mobile Data
+    var lastReceivedTelegramMsgId by remember { mutableLongStateOf(0L) }
     LaunchedEffect(Unit) {
         @Suppress("OPT_IN_USAGE")
         GlobalScope.launch(Dispatchers.IO) {
             while (true) {
                 try {
-                    val url = URL("$cloud4GStreamUrl/raw")
+                    val url = URL("https://api.telegram.org/bot$telegramBotToken/getUpdates?offset=-1")
                     val conn = url.openConnection() as HttpURLConnection
-                    conn.connectTimeout = 10000
-                    conn.readTimeout = 0 // Infinite read timeout for persistent 4G stream!
+                    conn.connectTimeout = 3000
+                    conn.readTimeout = 3000
                     conn.requestMethod = "GET"
 
                     if (conn.responseCode == 200) {
                         val reader = BufferedReader(InputStreamReader(conn.inputStream, "UTF-8"))
-                        var line: String?
-                        while (reader.readLine().also { line = it } != null) {
-                            val alertMsg = line?.trim() ?: ""
-                            if (alertMsg.isNotBlank()) {
-                                if (alertMsg != lastReceivedCloudMsg && !alertMsg.contains("Kimdan: $currentDeviceModel")) {
-                                    lastReceivedCloudMsg = alertMsg
-                                    withContext(Dispatchers.Main) {
-                                        triggerRecipientSiren(alertMsg, "4G Mobile Stream")
+                        val responseText = reader.readText()
+                        reader.close()
+
+                        val jsonObj = JSONObject(responseText)
+                        val resultArray = jsonObj.optJSONArray("result")
+                        if (resultArray != null && resultArray.length() > 0) {
+                            val lastUpdate = resultArray.getJSONObject(resultArray.length() - 1)
+                            val updateId = lastUpdate.optLong("update_id", 0L)
+                            val messageObj = lastUpdate.optJSONObject("message") ?: lastUpdate.optJSONObject("channel_post")
+
+                            if (messageObj != null) {
+                                val messageText = messageObj.optString("text", "")
+                                if (updateId != lastReceivedTelegramMsgId && messageText.isNotBlank()) {
+                                    if (!messageText.contains("Kimdan: $currentDeviceModel")) {
+                                        lastReceivedTelegramMsgId = updateId
+                                        withContext(Dispatchers.Main) {
+                                            triggerRecipientSiren(messageText, "4G Cloud ($currentDeviceModel)")
+                                        }
                                     }
                                 }
                             }
                         }
-                        reader.close()
                     }
                     conn.disconnect()
                 } catch (e: Exception) {}
@@ -562,7 +559,7 @@ fun FamilySosAlertApp() {
                             .background(Color.Green)
                     )
                     Text(
-                        text = "📱 $currentDeviceModel (4G Persistent Socket)",
+                        text = "📱 $currentDeviceModel (4G Cloud Online)",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp
