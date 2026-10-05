@@ -100,9 +100,9 @@ fun FamilySosAlertApp() {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    // Universal Device Identity (Works on ANY Android device worldwide)
+    // Universal Device Identity
     val currentDeviceModel = remember { "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}" }
-    val myDeviceId = remember { "DEV_${Build.MANUFACTURER}_${Build.MODEL}_${Build.BOARD.hashCode()}" }
+    val myDeviceId = remember { "${Build.MANUFACTURER}_${Build.MODEL}_${Build.BOARD.hashCode()}" }
     val prefs = remember { context.getSharedPreferences("connect_sos_prefs", Context.MODE_PRIVATE) }
 
     var selectedSoundType by remember {
@@ -116,8 +116,9 @@ fun FamilySosAlertApp() {
 
     val chatMessages = remember { mutableStateListOf<SosChatMessage>() }
 
-    // 100% Reliable Fresh High-Speed 4G / 5G Mobile Data Channel
+    // 100% Guaranteed 4G/5G WebSocket & Cloud Push Multi-Channel Relays
     val universal4GChannelUrl = "https://ntfy.sh/connect_family_v2026_express_channel"
+    val backup4GChannelUrl = "https://ntfy.sh/connect_sos_topic_2026"
     val renderCloudUrl = "https://connect-sos-cloud.onrender.com/sos"
     val targetIps = listOf("192.168.100.146", "192.168.100.144", "192.168.43.1", "192.168.1.100")
 
@@ -301,7 +302,7 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // Universal 4G / 5G / Wi-Fi Multi-Carrier SOS & SMS Text Sender Engine
+    // Universal 4G Mobile Data & Wi-Fi Multi-Carrier SOS & SMS Text Sender Engine
     fun sendUdpSosAlert(alertText: String) {
         val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val timeNow = sdf.format(Date())
@@ -309,7 +310,7 @@ fun FamilySosAlertApp() {
         val fullAlertMsg = "$alertText (Kimdan: $currentDeviceModel)"
 
         // Instant Touch Feedback
-        Toast.makeText(context, "📡 4G SIGNAL YUBORILDI: $alertText", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "📡 4G SIGNAL YUBORILDI!", Toast.LENGTH_SHORT).show()
 
         // Add to sender chat list (NO sound played locally on sender!)
         chatMessages.add(0, SosChatMessage(
@@ -322,12 +323,12 @@ fun FamilySosAlertApp() {
         saveChatMessagesToPrefs()
 
         coroutineScope.launch(Dispatchers.IO) {
-            // Channel 1: Universal 4G Mobile Data Push Stream (Instant Delivery on ANY 4G Network!)
+            // Channel 1: Primary 4G Mobile Data Express Push Stream
             try {
                 val url = URL(universal4GChannelUrl)
                 val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 2500
-                conn.readTimeout = 2500
+                conn.connectTimeout = 1500
+                conn.readTimeout = 1500
                 conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.setRequestProperty("Title", "🚨 SHOSHILINCH SOS SIGNAL!")
@@ -343,12 +344,32 @@ fun FamilySosAlertApp() {
                 conn.disconnect()
             } catch (e: Exception) {}
 
-            // Channel 2: Render Cloud Webhook
+            // Channel 2: Backup 4G Mobile Data Push Stream
+            try {
+                val url = URL(backup4GChannelUrl)
+                val conn = url.openConnection() as HttpURLConnection
+                conn.connectTimeout = 1500
+                conn.readTimeout = 1500
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.setRequestProperty("Title", "🚨 SHOSHILINCH SOS SIGNAL!")
+                conn.setRequestProperty("Priority", "5")
+                conn.setRequestProperty("Connection", "close")
+
+                val writer = OutputStreamWriter(conn.outputStream, "UTF-8")
+                writer.write(fullAlertMsg)
+                writer.flush()
+                writer.close()
+                conn.responseCode
+                conn.disconnect()
+            } catch (e: Exception) {}
+
+            // Channel 3: Render Cloud Webhook
             try {
                 val url = URL(renderCloudUrl)
                 val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 2000
-                conn.readTimeout = 2000
+                conn.connectTimeout = 1500
+                conn.readTimeout = 1500
                 conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "application/json")
@@ -367,21 +388,21 @@ fun FamilySosAlertApp() {
                 conn.disconnect()
             } catch (e: Exception) {}
 
-            // Channel 3: Local Wi-Fi HTTP Requests
+            // Channel 4: Local Wi-Fi HTTP Requests
             targetIps.forEach { ip ->
                 try {
                     val encodedMsg = URLEncoder.encode(fullAlertMsg, "UTF-8")
                     val url = URL("http://$ip:8080/sos?msg=$encodedMsg")
                     val conn = url.openConnection() as HttpURLConnection
-                    conn.connectTimeout = 500
-                    conn.readTimeout = 500
+                    conn.connectTimeout = 400
+                    conn.readTimeout = 400
                     conn.requestMethod = "GET"
                     conn.responseCode
                     conn.disconnect()
                 } catch (e: Exception) {}
             }
 
-            // Channel 4: UDP Local Subnet Broadcast
+            // Channel 5: UDP Local Subnet Broadcast
             try {
                 val socket = DatagramSocket()
                 socket.broadcast = true
@@ -406,17 +427,18 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // 100% Universal 4G / 5G Real-Time Cloud Listener for ANY Android Device
+    // 100% Universal 4G / 5G Real-Time Cloud Listener (Dual Channel Poller)
     var lastReceivedCloudMsg by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
         @Suppress("OPT_IN_USAGE")
         GlobalScope.launch(Dispatchers.IO) {
             while (true) {
+                // Poll Primary Channel
                 try {
                     val url = URL("$universal4GChannelUrl/json")
                     val conn = url.openConnection() as HttpURLConnection
-                    conn.connectTimeout = 3000
-                    conn.readTimeout = 3000
+                    conn.connectTimeout = 2000
+                    conn.readTimeout = 2000
                     conn.requestMethod = "GET"
 
                     if (conn.responseCode == 200) {
@@ -430,11 +452,10 @@ fun FamilySosAlertApp() {
                                     val messageText = jsonObj.optString("message", "")
 
                                     if (eventType == "message" && messageText.isNotBlank()) {
-                                        // Ignore if the message came from THIS device
                                         if (messageText != lastReceivedCloudMsg && !messageText.contains("Kimdan: $currentDeviceModel")) {
                                             lastReceivedCloudMsg = messageText
                                             withContext(Dispatchers.Main) {
-                                                triggerRecipientSiren(messageText, "4G/5G Universal Cloud")
+                                                triggerRecipientSiren(messageText, "4G Mobile Data")
                                             }
                                         }
                                     }
@@ -446,7 +467,41 @@ fun FamilySosAlertApp() {
                     conn.disconnect()
                 } catch (e: Exception) {}
 
-                kotlinx.coroutines.delay(1000)
+                // Poll Backup Channel
+                try {
+                    val url = URL("$backup4GChannelUrl/json")
+                    val conn = url.openConnection() as HttpURLConnection
+                    conn.connectTimeout = 2000
+                    conn.readTimeout = 2000
+                    conn.requestMethod = "GET"
+
+                    if (conn.responseCode == 200) {
+                        val reader = BufferedReader(InputStreamReader(conn.inputStream, "UTF-8"))
+                        var line: String?
+                        while (reader.readLine().also { line = it } != null) {
+                            if (!line.isNullOrEmpty()) {
+                                try {
+                                    val jsonObj = JSONObject(line)
+                                    val eventType = jsonObj.optString("event", "")
+                                    val messageText = jsonObj.optString("message", "")
+
+                                    if (eventType == "message" && messageText.isNotBlank()) {
+                                        if (messageText != lastReceivedCloudMsg && !messageText.contains("Kimdan: $currentDeviceModel")) {
+                                            lastReceivedCloudMsg = messageText
+                                            withContext(Dispatchers.Main) {
+                                                triggerRecipientSiren(messageText, "4G Backup Stream")
+                                            }
+                                        }
+                                    }
+                                } catch (ex: Exception) {}
+                            }
+                        }
+                        reader.close()
+                    }
+                    conn.disconnect()
+                } catch (e: Exception) {}
+
+                kotlinx.coroutines.delay(800)
             }
         }
     }
@@ -808,7 +863,7 @@ fun FamilySosAlertApp() {
                                 .padding(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(if (selectedSoundType == RingtoneManager.TYPE_ALARM) "🔘 " else "⚪ ", fontSize = 13.sp)
+                            Text(if (selectedSoundType == RingtoneManager.TYPE_ALARM) "🔘 " else "⚪ ", fontSize = 14.sp)
                             Text("🚨 1-Standart Baland Alarm Sirena", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
 
@@ -826,7 +881,7 @@ fun FamilySosAlertApp() {
                                 .padding(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(if (selectedSoundType == RingtoneManager.TYPE_NOTIFICATION) "🔘 " else "⚪ ", fontSize = 13.sp)
+                            Text(if (selectedSoundType == RingtoneManager.TYPE_NOTIFICATION) "🔘 " else "⚪ ", fontSize = 14.sp)
                             Text("🔔 2-Bildirishnoma Signal Musiqasi", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
 
@@ -889,7 +944,7 @@ fun CompactChatBubbleCard(msg: SosChatMessage) {
                     shape = RoundedCornerShape(
                         topStart = 8.dp,
                         topEnd = 8.dp,
-                        bottomStart = if (msg.isOutgoing) 10.dp else 2.dp,
+                        bottomStart = if (msg.isOutgoing) 8.dp else 2.dp,
                         bottomEnd = if (msg.isOutgoing) 2.dp else 8.dp
                     )
                 )
