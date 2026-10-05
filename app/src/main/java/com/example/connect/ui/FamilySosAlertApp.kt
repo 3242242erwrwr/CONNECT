@@ -124,9 +124,9 @@ fun FamilySosAlertApp() {
         } catch (e: Exception) {}
     }
 
-    // Option 4: Dedicated Real-Time WebSocket & Persistent Socket Relay (Passes 4G CGNAT Firewalls 100%!)
+    // New Render Cloud Relay Server URL (sos-connect)
     val cloud4GWebSocketRelayUrl = "https://ntfy.sh/connect_family_sos_websocket_v4_channel"
-    val renderCloudUrl = "https://connect-sos-cloud.onrender.com/sos"
+    val renderCloudUrl = "https://sos-connect.onrender.com/sos"
     val targetIps = listOf("192.168.100.146", "192.168.100.144", "192.168.43.1", "192.168.1.100")
 
     // STOP ALL SIREN SOUNDS INSTANTLY
