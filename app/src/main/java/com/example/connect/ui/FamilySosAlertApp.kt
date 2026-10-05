@@ -412,7 +412,7 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // Real-Time 4G Global Cloud Listener (Listens to ntfy.sh channel /json stream)
+    // Real-Time 4G Global Cloud Listener (Ultra-Fast 1 Second Poller)
     var lastReceivedCloudMsg by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
         @Suppress("OPT_IN_USAGE")
@@ -421,8 +421,8 @@ fun FamilySosAlertApp() {
                 try {
                     val url = URL("$cloudRelayBase/json")
                     val conn = url.openConnection() as HttpURLConnection
-                    conn.connectTimeout = 3000
-                    conn.readTimeout = 3000
+                    conn.connectTimeout = 1500
+                    conn.readTimeout = 1500
                     conn.requestMethod = "GET"
 
                     if (conn.responseCode == 200) {
@@ -453,7 +453,7 @@ fun FamilySosAlertApp() {
                     conn.disconnect()
                 } catch (e: Exception) {}
 
-                kotlinx.coroutines.delay(1500)
+                kotlinx.coroutines.delay(1000)
             }
         }
     }

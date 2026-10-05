@@ -1,9 +1,11 @@
 from flask import Flask, request, jsonify
+from concurrent.futures import ThreadPoolExecutor
 import time
 
 app = Flask(__name__)
+executor = ThreadPoolExecutor(max_workers=10)
 
-# Global storage for the latest SOS alert
+# Ultra-Fast In-Memory RAM Storage for instant zero-latency responses
 latest_alert = {
     "id": "0",
     "alert": "",
@@ -24,15 +26,15 @@ def sos_endpoint():
                 "id": str(int(time.time() * 1000)),
                 "alert": alert_msg,
                 "sender": sender,
-                "timestamp": time.strftime("%H:%mm:%ss")
+                "timestamp": time.strftime("%H:%M:%S")
             }
-        return jsonify({"status": "SUCCESS", "latest_alert": latest_alert})
+        return jsonify({"status": "SUCCESS", "latest_alert": latest_alert}), 200
     else:
-        return jsonify({"status": "SUCCESS", "latest_alert": latest_alert})
+        return jsonify({"status": "SUCCESS", "latest_alert": latest_alert}), 200
 
 @app.route('/')
 def home():
-    return "🚀 Connect SOS Global Cloud Relay Server is Running Active!"
+    return "⚡ Connect SOS Ultra-Fast Lightning Cloud Relay Server Running!"
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000)
+    app.run(host='0.0.0.0', port=10000, threaded=True)
