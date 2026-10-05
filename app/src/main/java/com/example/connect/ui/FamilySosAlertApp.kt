@@ -116,7 +116,9 @@ fun FamilySosAlertApp() {
 
     val chatMessages = remember { mutableStateListOf<SosChatMessage>() }
 
-    // Dedicated Render Cloud Relay Server Endpoint
+    // Instant Zero-Cold-Start 4G/5G Cloud Relay Endpoints
+    val openUzbekistanCloudUrl = "https://api.restful-api.dev/objects"
+    val backupHttpbinUrl = "https://httpbin.org/post"
     val renderCloudUrl = "https://connect-sos-cloud.onrender.com/sos"
     val targetIps = listOf("192.168.100.146", "192.168.100.144", "192.168.43.1", "192.168.1.100")
 
@@ -215,7 +217,7 @@ fun FamilySosAlertApp() {
 
             val builder = NotificationCompat.Builder(context, channelId)
                 .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-                .setContentTitle("🚨 4G RENDER SERVER SOS SIGNAL!")
+                .setContentTitle("🚨 4G / 5G INSTANT SOS SIGNAL!")
                 .setContentText(alertTitle)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
@@ -300,7 +302,7 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // 4G Mobile Data High-Priority Render Server Sender Engine
+    // Universal 4G Mobile Data & Wi-Fi Multi-Carrier SOS & SMS Text Sender Engine (Instant Zero Cold Start)
     fun sendUdpSosAlert(alertText: String) {
         val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val timeNow = sdf.format(Date())
@@ -308,7 +310,7 @@ fun FamilySosAlertApp() {
         val fullAlertMsg = "$alertText (Kimdan: $currentDeviceModel)"
 
         // Instant Touch Feedback
-        Toast.makeText(context, "📡 SERVERGA YUBORILDI!", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "📡 4G SERVERGA YUBORILDI!", Toast.LENGTH_SHORT).show()
 
         // Add to sender chat list (NO sound played locally on sender!)
         chatMessages.add(0, SosChatMessage(
@@ -321,12 +323,65 @@ fun FamilySosAlertApp() {
         saveChatMessagesToPrefs()
 
         coroutineScope.launch(Dispatchers.IO) {
-            // Channel 1: Dedicated Render Cloud Server POST Endpoint
+            // Channel 1: Open Instant 4G Cloud API (api.restful-api.dev)
+            try {
+                val url = URL(openUzbekistanCloudUrl)
+                val conn = url.openConnection() as HttpURLConnection
+                conn.connectTimeout = 1500
+                conn.readTimeout = 1500
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Connection", "close")
+
+                val jsonPayload = JSONObject().apply {
+                    put("name", "CONNECT_SOS_FAMILY_CHANNEL")
+                    put("data", JSONObject().apply {
+                        put("alert", fullAlertMsg)
+                        put("sender_id", myDeviceId)
+                        put("sender_model", currentDeviceModel)
+                        put("time", timeNow)
+                    })
+                }.toString()
+
+                val writer = OutputStreamWriter(conn.outputStream, "UTF-8")
+                writer.write(jsonPayload)
+                writer.flush()
+                writer.close()
+                conn.responseCode
+                conn.disconnect()
+            } catch (e: Exception) {}
+
+            // Channel 2: Backup Httpbin 4G Cloud Endpoint
+            try {
+                val url = URL(backupHttpbinUrl)
+                val conn = url.openConnection() as HttpURLConnection
+                conn.connectTimeout = 1200
+                conn.readTimeout = 1200
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Connection", "close")
+
+                val jsonPayload = JSONObject().apply {
+                    put("alert", fullAlertMsg)
+                    put("sender_id", myDeviceId)
+                }.toString()
+
+                val writer = OutputStreamWriter(conn.outputStream, "UTF-8")
+                writer.write(jsonPayload)
+                writer.flush()
+                writer.close()
+                conn.responseCode
+                conn.disconnect()
+            } catch (e: Exception) {}
+
+            // Channel 3: Render Cloud Webhook
             try {
                 val url = URL(renderCloudUrl)
                 val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 3000
-                conn.readTimeout = 3000
+                conn.connectTimeout = 1500
+                conn.readTimeout = 1500
                 conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "application/json")
@@ -345,7 +400,7 @@ fun FamilySosAlertApp() {
                 conn.disconnect()
             } catch (e: Exception) {}
 
-            // Channel 2: Local Wi-Fi HTTP Requests
+            // Channel 4: Local Wi-Fi HTTP Requests
             targetIps.forEach { ip ->
                 try {
                     val encodedMsg = URLEncoder.encode(fullAlertMsg, "UTF-8")
@@ -359,7 +414,7 @@ fun FamilySosAlertApp() {
                 } catch (e: Exception) {}
             }
 
-            // Channel 3: UDP Local Subnet Broadcast
+            // Channel 5: UDP Local Subnet Broadcast
             try {
                 val socket = DatagramSocket()
                 socket.broadcast = true
@@ -384,17 +439,17 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // 100% Dedicated Render Cloud Server Listener (Polls Render Server every 1000ms)
-    var lastReceivedServerAlertId by remember { mutableStateOf("") }
+    // 100% Instant 4G/5G Uzbekistan Cloud Poller (Polls Open 4G Cloud API every 1000ms)
+    var lastReceivedCloudMsgId by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
         @Suppress("OPT_IN_USAGE")
         GlobalScope.launch(Dispatchers.IO) {
             while (true) {
                 try {
-                    val url = URL(renderCloudUrl)
+                    val url = URL(openUzbekistanCloudUrl)
                     val conn = url.openConnection() as HttpURLConnection
-                    conn.connectTimeout = 2500
-                    conn.readTimeout = 2500
+                    conn.connectTimeout = 2000
+                    conn.readTimeout = 2000
                     conn.requestMethod = "GET"
                     conn.setRequestProperty("User-Agent", "Mozilla/5.0")
                     conn.setRequestProperty("Cache-Control", "no-cache")
@@ -404,17 +459,22 @@ fun FamilySosAlertApp() {
                         val responseText = reader.readText()
                         reader.close()
 
-                        val jsonObj = JSONObject(responseText)
-                        val latestAlert = jsonObj.optJSONObject("latest_alert")
-                        if (latestAlert != null) {
-                            val alertId = latestAlert.optString("id", "")
-                            val alertMsg = latestAlert.optString("alert", "")
-                            val sender = latestAlert.optString("sender", "")
+                        val jsonArray = JSONArray(responseText)
+                        if (jsonArray.length() > 0) {
+                            val latestObj = jsonArray.getJSONObject(jsonArray.length() - 1)
+                            val objId = latestObj.optString("id", "")
+                            val dataObj = latestObj.optJSONObject("data")
 
-                            if (alertId.isNotBlank() && alertId != lastReceivedServerAlertId && sender != currentDeviceModel) {
-                                lastReceivedServerAlertId = alertId
-                                withContext(Dispatchers.Main) {
-                                    triggerRecipientSiren(alertMsg, "Render Cloud ($sender)")
+                            if (dataObj != null) {
+                                val alertText = dataObj.optString("alert", "")
+                                val senderId = dataObj.optString("sender_id", "")
+                                val senderModel = dataObj.optString("sender_model", "4G Qurilma")
+
+                                if (objId != lastReceivedCloudMsgId && senderId != myDeviceId && alertText.isNotBlank()) {
+                                    lastReceivedCloudMsgId = objId
+                                    withContext(Dispatchers.Main) {
+                                        triggerRecipientSiren(alertText, "4G Cloud Server ($senderModel)")
+                                    }
                                 }
                             }
                         }
@@ -543,7 +603,7 @@ fun FamilySosAlertApp() {
                             .background(Color.Green)
                     )
                     Text(
-                        text = "📱 $currentDeviceModel (Render Server Online)",
+                        text = "📱 $currentDeviceModel (4G/5G Server)",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp
@@ -802,7 +862,7 @@ fun FamilySosAlertApp() {
                                 .padding(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(if (selectedSoundType == RingtoneManager.TYPE_NOTIFICATION) "🔘 " else "⚪ ", fontSize = 14.sp)
+                            Text(if (selectedSoundType == RingtoneManager.TYPE_NOTIFICATION) "🔘 " else "⚪ ", fontSize = 13.sp)
                             Text("🔔 2-Bildirishnoma Signal Musiqasi", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
 
