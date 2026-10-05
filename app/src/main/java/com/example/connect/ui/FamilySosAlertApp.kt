@@ -38,6 +38,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -113,21 +114,69 @@ fun FamilySosAlertApp() {
     var lastAlertText by remember { mutableStateOf("") }
     var customMessageText by remember { mutableStateOf("") }
 
-    // Lightweight In-Memory List ONLY (No SharedPreferences Storage, Auto-Cleaned to max 5 items!)
     val chatMessages = remember { mutableStateListOf<SosChatMessage>() }
 
-    // Clean old saved SharedPreferences storage once
-    LaunchedEffect(Unit) {
-        try {
-            prefs.edit().remove("saved_chat_messages").apply()
-            chatMessages.clear()
-        } catch (e: Exception) {}
-    }
-
-    // New Render Cloud Relay Server URL (sos-connect)
+    // Instant Zero-Cold-Start 4G Mobile Data Relay Endpoints
     val cloud4GWebSocketRelayUrl = "https://ntfy.sh/connect_family_sos_websocket_v4_channel"
+    val openUzbekistanCloudUrl = "https://api.restful-api.dev/objects"
     val renderCloudUrl = "https://sos-connect.onrender.com/sos"
     val targetIps = listOf("192.168.100.146", "192.168.100.144", "192.168.43.1", "192.168.1.100")
+
+    // Save Chat Messages to SharedPreferences
+    fun saveChatMessagesToPrefs() {
+        try {
+            val jsonArray = JSONArray()
+            chatMessages.forEach { msg ->
+                val obj = JSONObject().apply {
+                    put("id", msg.id)
+                    put("senderName", msg.senderName)
+                    put("alertText", msg.alertText)
+                    put("timestamp", msg.timestamp)
+                    put("isOutgoing", msg.isOutgoing)
+                }
+                jsonArray.put(obj)
+            }
+            prefs.edit().putString("saved_chat_messages", jsonArray.toString()).apply()
+        } catch (e: Exception) {
+            // Ignore JSON error
+        }
+    }
+
+    // Load Saved Chat Messages on App Start
+    fun loadChatMessagesFromPrefs() {
+        try {
+            val savedJson = prefs.getString("saved_chat_messages", null)
+            if (!savedJson.isNullOrEmpty()) {
+                val jsonArray = JSONArray(savedJson)
+                val loadedList = mutableListOf<SosChatMessage>()
+                for (i in 0 until jsonArray.length()) {
+                    val obj = jsonArray.getJSONObject(i)
+                    loadedList.add(
+                        SosChatMessage(
+                            id = obj.getString("id"),
+                            senderName = obj.getString("senderName"),
+                            alertText = obj.getString("alertText"),
+                            timestamp = obj.getString("timestamp"),
+                            isOutgoing = obj.getBoolean("isOutgoing")
+                        )
+                    )
+                }
+                chatMessages.clear()
+                chatMessages.addAll(loadedList)
+            } else {
+                if (chatMessages.isEmpty()) {
+                    chatMessages.add(SosChatMessage("1", "Oila A'zosi", "🚨 SAIDBEKKA QARA!", "02:18:12", isOutgoing = true))
+                    chatMessages.add(SosChatMessage("2", "Oila A'zosi", "🔔 JASMINAHON QANI?", "02:10:10", isOutgoing = false))
+                }
+            }
+        } catch (e: Exception) {
+            // Ignore error
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        loadChatMessagesFromPrefs()
+    }
 
     // STOP ALL SIREN SOUNDS INSTANTLY
     fun handleStopSirena() {
@@ -168,7 +217,7 @@ fun FamilySosAlertApp() {
 
             val builder = NotificationCompat.Builder(context, channelId)
                 .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-                .setContentTitle("🚨 4G WEBSOCKET SOS SIGNAL!")
+                .setContentTitle("🚨 4G MOBILE SOS SIGNAL!")
                 .setContentText(alertTitle)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
@@ -189,7 +238,6 @@ fun FamilySosAlertApp() {
         lastAlertText = alertTitle
         isAlertActive = true
 
-        // Keep maximum 5 lightweight messages in memory
         chatMessages.add(0, SosChatMessage(
             id = System.currentTimeMillis().toString(),
             senderName = senderInfo,
@@ -197,9 +245,7 @@ fun FamilySosAlertApp() {
             timestamp = timeNow,
             isOutgoing = false
         ))
-        if (chatMessages.size > 5) {
-            chatMessages.removeAt(chatMessages.size - 1)
-        }
+        saveChatMessagesToPrefs()
 
         // POP UP SCREEN ON INCOMING SOS
         try {
@@ -256,7 +302,7 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // Option 4: 4G Mobile Data WebSocket Socket Frame Publisher
+    // 4G Mobile Data High-Priority Parallel Sender Engine
     fun sendUdpSosAlert(alertText: String) {
         val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val timeNow = sdf.format(Date())
@@ -264,9 +310,9 @@ fun FamilySosAlertApp() {
         val fullAlertMsg = "$alertText (Kimdan: $currentDeviceModel)"
 
         // Instant Touch Feedback
-        Toast.makeText(context, "📡 4G WEBSOCKET SIGNAL YUBORILDI!", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "📡 4G SIGNAL YUBORILDI!", Toast.LENGTH_SHORT).show()
 
-        // Keep maximum 5 lightweight messages in memory (No SharedPreferences saving!)
+        // Add to sender chat list (NO sound played locally on sender!)
         chatMessages.add(0, SosChatMessage(
             id = System.currentTimeMillis().toString(),
             senderName = "$currentDeviceModel (Siz)",
@@ -274,19 +320,17 @@ fun FamilySosAlertApp() {
             timestamp = timeNow,
             isOutgoing = true
         ))
-        if (chatMessages.size > 5) {
-            chatMessages.removeAt(chatMessages.size - 1)
-        }
+        saveChatMessagesToPrefs()
 
         coroutineScope.launch(Dispatchers.IO) {
-            // Channel 1: 4G Mobile WebSocket Express Stream
+            // Channel 1: Instant 4G Cloud Push Stream
             try {
                 val url = URL(cloud4GWebSocketRelayUrl)
                 val conn = url.openConnection() as HttpURLConnection
                 val payloadBytes = fullAlertMsg.toByteArray(Charsets.UTF_8)
 
-                conn.connectTimeout = 3000
-                conn.readTimeout = 3000
+                conn.connectTimeout = 2500
+                conn.readTimeout = 2500
                 conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.setFixedLengthStreamingMode(payloadBytes.size)
@@ -302,7 +346,37 @@ fun FamilySosAlertApp() {
                 conn.disconnect()
             } catch (e: Exception) {}
 
-            // Channel 2: Render Cloud Webhook
+            // Channel 2: Open Instant 4G Cloud API
+            try {
+                val url = URL(openUzbekistanCloudUrl)
+                val conn = url.openConnection() as HttpURLConnection
+                val jsonPayload = JSONObject().apply {
+                    put("name", "CONNECT_SOS_FAMILY_CHANNEL")
+                    put("data", JSONObject().apply {
+                        put("alert", fullAlertMsg)
+                        put("sender_id", myDeviceId)
+                        put("sender_model", currentDeviceModel)
+                        put("time", timeNow)
+                    })
+                }.toString()
+                val payloadBytes = jsonPayload.toByteArray(Charsets.UTF_8)
+
+                conn.connectTimeout = 2000
+                conn.readTimeout = 2000
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.setFixedLengthStreamingMode(payloadBytes.size)
+                conn.setRequestProperty("Content-Type", "application/json")
+
+                val os = conn.outputStream
+                os.write(payloadBytes)
+                os.flush()
+                os.close()
+                conn.responseCode
+                conn.disconnect()
+            } catch (e: Exception) {}
+
+            // Channel 3: Render Cloud Webhook
             try {
                 val url = URL(renderCloudUrl)
                 val conn = url.openConnection() as HttpURLConnection
@@ -327,7 +401,7 @@ fun FamilySosAlertApp() {
                 conn.disconnect()
             } catch (e: Exception) {}
 
-            // Channel 3: Local Wi-Fi HTTP Requests
+            // Channel 4: Local Wi-Fi HTTP Requests
             targetIps.forEach { ip ->
                 try {
                     val encodedMsg = URLEncoder.encode(fullAlertMsg, "UTF-8")
@@ -341,7 +415,7 @@ fun FamilySosAlertApp() {
                 } catch (e: Exception) {}
             }
 
-            // Channel 4: UDP Local Subnet Broadcast
+            // Channel 5: UDP Local Subnet Broadcast
             try {
                 val socket = DatagramSocket()
                 socket.broadcast = true
@@ -366,26 +440,7 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // Acquire PowerManager WakeLock so Android CPU & 4G Sockets never sleep on 4G Mobile Data!
-    DisposableEffect(Unit) {
-        var wakeLock: android.os.PowerManager.WakeLock? = null
-        try {
-            val powerManager = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
-            wakeLock = powerManager.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "ConnectSOS::4GWakeLock").apply {
-                acquire(10 * 60 * 1000L /* 10 mins */)
-            }
-        } catch (e: Exception) {}
-
-        onDispose {
-            try {
-                if (wakeLock?.isHeld == true) {
-                    wakeLock.release()
-                }
-            } catch (e: Exception) {}
-        }
-    }
-
-    // Option 4: 100% Persistent 4G WebSocket Full-Duplex Stream Listener (Never Drops on 4G!)
+    // 100% Persistent 4G WebSocket Full-Duplex Stream Listener (Never Drops on 4G!)
     var lastReceivedCloudMsg by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
         @Suppress("OPT_IN_USAGE")
@@ -407,7 +462,7 @@ fun FamilySosAlertApp() {
                                 if (alertMsg != lastReceivedCloudMsg && !alertMsg.contains("Kimdan: $currentDeviceModel")) {
                                     lastReceivedCloudMsg = alertMsg
                                     withContext(Dispatchers.Main) {
-                                        triggerRecipientSiren(alertMsg, "4G WebSocket Stream")
+                                        triggerRecipientSiren(alertMsg, "4G Mobile Data Stream")
                                     }
                                 }
                             }
@@ -538,7 +593,7 @@ fun FamilySosAlertApp() {
                             .background(Color.Green)
                     )
                     Text(
-                        text = "📱 $currentDeviceModel (Clean RAM Feed)",
+                        text = "📱 $currentDeviceModel (4G Mobile Stream)",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp
@@ -710,7 +765,7 @@ fun FamilySosAlertApp() {
             }
 
             Text(
-                text = "SOS Xabarlar Spiskasi (Yengil RAM Feed):",
+                text = "SOS Xabarlar Spiskasi (Chat Feed):",
                 color = Color.LightGray,
                 fontWeight = FontWeight.Bold,
                 fontSize = 11.sp
@@ -856,7 +911,7 @@ fun CompactChatBubbleCard(msg: SosChatMessage) {
                 .widthIn(max = 260.dp)
                 .border(
                     width = 1.dp,
-                    color = if (msg.isOutgoing) Color(0xFF1E88E5) else Color(0xFF383E50),
+                    color = if (msg.isOutgoing) Color(0xFF42A5F5) else Color(0xFF383E50),
                     shape = RoundedCornerShape(
                         topStart = 8.dp,
                         topEnd = 8.dp,
