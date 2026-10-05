@@ -215,9 +215,6 @@ fun FamilySosAlertApp() {
             isOutgoing = false,
             isSeenByRecipient = true
         ))
-        if (chatMessages.size > 5) {
-            chatMessages.removeAt(chatMessages.size - 1)
-        }
 
         // Auto Send Read Receipt ACK back to sender
         if (alertMsgId.isNotBlank()) {
@@ -301,9 +298,6 @@ fun FamilySosAlertApp() {
             isSeenByRecipient = false
         )
         chatMessages.add(0, outgoingMsg)
-        if (chatMessages.size > 5) {
-            chatMessages.removeAt(chatMessages.size - 1)
-        }
 
         coroutineScope.launch(Dispatchers.IO) {
             // Channel 1: 4G Mobile WebSocket Express Stream
@@ -512,7 +506,7 @@ fun FamilySosAlertApp() {
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Quick SOS Buttons Row 1 (HIGH-SENSITIVITY TOUCH BUTTONS WITH INSTANT FEEDBACK!)
+            // Quick SOS Buttons Row 1
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -671,19 +665,19 @@ fun FamilySosAlertApp() {
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Compact List-Style Chat Messages List (COMPACT 120dp HEIGHT MAX)
+            // Original Full-Sized Chat Messages List (Restored Original Layout!)
             LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(3.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 120.dp)
+                    .weight(1f)
             ) {
                 items(chatMessages) { msg ->
-                    CompactChatBubbleCard(msg = msg)
+                    OriginalChatBubbleCard(msg = msg)
                 }
             }
 
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.height(6.dp))
 
             // PERMANENT ALWAYS-VISIBLE PROMINENT STOP BUTTON AT THE VERY BOTTOM OF THE SCREEN!
             Button(
@@ -788,10 +782,10 @@ fun FamilySosAlertApp() {
 }
 
 @Composable
-fun CompactChatBubbleCard(msg: SosChatMessage) {
+fun OriginalChatBubbleCard(msg: SosChatMessage) {
     val alignment = if (msg.isOutgoing) Alignment.End else Alignment.Start
-    val bubbleColor = if (msg.isOutgoing) Color(0xFF1565C0) else Color(0xFF262A38)
-    val senderLabel = if (msg.isOutgoing) "📤 Siz" else "📥 ${msg.senderName}"
+    val bubbleColor = if (msg.isOutgoing) Color(0xFF1E88E5) else Color(0xFF2A2E3D)
+    val senderLabel = if (msg.isOutgoing) "📤 Yuborildi (Siz)" else "📥 Kelgan Signal (${msg.senderName})"
 
     val statusIcon = when {
         !msg.isOutgoing -> ""
@@ -807,57 +801,56 @@ fun CompactChatBubbleCard(msg: SosChatMessage) {
         Card(
             colors = CardDefaults.cardColors(containerColor = bubbleColor),
             shape = RoundedCornerShape(
-                topStart = 8.dp,
-                topEnd = 8.dp,
-                bottomStart = if (msg.isOutgoing) 8.dp else 2.dp,
-                bottomEnd = if (msg.isOutgoing) 2.dp else 8.dp
+                topStart = 10.dp,
+                topEnd = 10.dp,
+                bottomStart = if (msg.isOutgoing) 10.dp else 2.dp,
+                bottomEnd = if (msg.isOutgoing) 2.dp else 10.dp
             ),
             modifier = Modifier
-                .widthIn(max = 260.dp)
+                .widthIn(max = 280.dp)
                 .border(
                     width = 1.dp,
-                    color = if (msg.isOutgoing) Color(0xFF1E88E5) else Color(0xFF383E50),
+                    color = if (msg.isOutgoing) Color(0xFF42A5F5) else Color(0xFF383E50),
                     shape = RoundedCornerShape(
-                        topStart = 8.dp,
-                        topEnd = 8.dp,
-                        bottomStart = if (msg.isOutgoing) 8.dp else 2.dp,
-                        bottomEnd = if (msg.isOutgoing) 2.dp else 8.dp
+                        topStart = 10.dp,
+                        topEnd = 10.dp,
+                        bottomStart = if (msg.isOutgoing) 10.dp else 2.dp,
+                        bottomEnd = if (msg.isOutgoing) 2.dp else 10.dp
                     )
                 )
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier.padding(10.dp)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "$senderLabel$statusIcon",
-                        color = if (msg.isSeenByRecipient) Color(0xFF66BB6A) else if (msg.isOutgoing) Color(0xFF90CAF9) else Color(0xFFFFB74D),
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 9.sp
-                    )
+                Text(
+                    text = "$senderLabel$statusIcon",
+                    color = if (msg.isSeenByRecipient) Color(0xFF66BB6A) else if (msg.isOutgoing) Color(0xFFBBDEFB) else Color(0xFFFFB74D),
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 10.sp
+                )
 
-                    Spacer(modifier = Modifier.height(2.dp))
-
-                    Text(
-                        text = msg.alertText,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(6.dp))
+                Spacer(modifier = Modifier.height(3.dp))
 
                 Text(
-                    text = msg.timestamp,
-                    color = Color.LightGray,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 8.sp
+                    text = msg.alertText,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
                 )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Text(
+                        text = msg.timestamp,
+                        color = Color.LightGray,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 9.sp
+                    )
+                }
             }
         }
     }
