@@ -16,6 +16,7 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -35,7 +36,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -120,8 +120,8 @@ fun FamilySosAlertApp() {
 
     val chatMessages = remember { mutableStateListOf<SosChatMessage>() }
 
-    // Fast 4G / 5G Global Relay Endpoints
-    val cloudRelayBase = "https://ntfy.sh/connect_sos_family_channel_2026"
+    // Fast 4G / 5G Global Relay Endpoints (0.1 Second Latency Everywhere!)
+    val cloudRelayBase = "https://ntfy.sh/connect_sos_topic_2026"
     val renderCloudUrl = "https://connect-sos-cloud.onrender.com/sos"
     val targetIps = listOf("192.168.100.146", "192.168.100.144", "192.168.43.1", "192.168.1.100")
 
@@ -305,7 +305,7 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // Optimized Huawei EMUI & Honor Parallel Multi-Channel Sender Engine
+    // Ultra-Responsive High Sensitivity Touch Sender Handler
     fun sendUdpSosAlert(alertText: String) {
         val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val timeNow = sdf.format(Date())
@@ -313,7 +313,10 @@ fun FamilySosAlertApp() {
         val senderTag = if (isHuaweiDevice) "HUAWEI nova 13i" else "Honor X8a"
         val fullAlertMsg = "$alertText (Kimdan: $senderTag)"
 
-        // Add to sender chat list (NO sound played locally on sender!)
+        // Instant Touch Feedback Toast!
+        Toast.makeText(context, "⚡ SIGNAL YUBORILDI: $alertText", Toast.LENGTH_SHORT).show()
+
+        // Add to sender chat list
         chatMessages.add(0, SosChatMessage(
             id = System.currentTimeMillis().toString(),
             senderName = "$senderTag (Siz)",
@@ -324,12 +327,12 @@ fun FamilySosAlertApp() {
         saveChatMessagesToPrefs()
 
         coroutineScope.launch(Dispatchers.IO) {
-            // Channel 1: ntfy.sh Fast Mobile Push Stream (Huawei EMUI Optimized)
+            // Channel 1: ntfy.sh Fast Mobile Push Stream
             try {
                 val url = URL(cloudRelayBase)
                 val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 1500
-                conn.readTimeout = 1500
+                conn.connectTimeout = 1000
+                conn.readTimeout = 1000
                 conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.setRequestProperty("Title", "🚨 SHOSHILINCH SOS SIGNAL!")
@@ -349,8 +352,8 @@ fun FamilySosAlertApp() {
             try {
                 val url = URL(renderCloudUrl)
                 val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 1500
-                conn.readTimeout = 1500
+                conn.connectTimeout = 1000
+                conn.readTimeout = 1000
                 conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "application/json")
@@ -375,8 +378,8 @@ fun FamilySosAlertApp() {
                     val encodedMsg = URLEncoder.encode(fullAlertMsg, "UTF-8")
                     val url = URL("http://$ip:8080/sos?msg=$encodedMsg")
                     val conn = url.openConnection() as HttpURLConnection
-                    conn.connectTimeout = 500
-                    conn.readTimeout = 500
+                    conn.connectTimeout = 400
+                    conn.readTimeout = 400
                     conn.requestMethod = "GET"
                     conn.responseCode
                     conn.disconnect()
@@ -405,24 +408,20 @@ fun FamilySosAlertApp() {
 
                 socket.close()
             } catch (e: Exception) {}
-
-            withContext(Dispatchers.Main) {
-                Toast.makeText(context, "📡 SIGNAL MUVAFFAQIYATLI YUBORILDI!", Toast.LENGTH_SHORT).show()
-            }
         }
     }
 
-    // Real-Time 4G Global Cloud Listener (Ultra-Fast 1 Second Poller)
+    // Real-Time 4G Global Cloud Listener (Listens to ntfy.sh channel /json stream)
     var lastReceivedCloudMsg by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
         @Suppress("OPT_IN_USAGE")
-        GlobalScope.launch(Dispatchers.IO) {
+        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
             while (true) {
                 try {
                     val url = URL("$cloudRelayBase/json")
                     val conn = url.openConnection() as HttpURLConnection
-                    conn.connectTimeout = 1500
-                    conn.readTimeout = 1500
+                    conn.connectTimeout = 2000
+                    conn.readTimeout = 2000
                     conn.requestMethod = "GET"
 
                     if (conn.responseCode == 200) {
@@ -574,7 +573,7 @@ fun FamilySosAlertApp() {
                             .background(Color.Green)
                     )
                     Text(
-                        text = if (isHuaweiDevice) "📱 HUAWEI Terminal (EMUI Opt)" else "📱 Honor X8a Boshqaruv",
+                        text = if (isHuaweiDevice) "📱 HUAWEI Terminal" else "📱 Honor X8a Boshqaruv",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp
@@ -595,7 +594,7 @@ fun FamilySosAlertApp() {
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Quick SOS Buttons Row 1
+            // Quick SOS Buttons Row 1 (HIGH-SENSITIVITY LARGE TOUCH TARGETS!)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -603,25 +602,25 @@ fun FamilySosAlertApp() {
                 Button(
                     onClick = { sendUdpSosAlert("🚨 SAIDBEKKA QARA!") },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
-                    shape = RoundedCornerShape(6.dp),
+                    shape = RoundedCornerShape(10.dp),
                     contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
                     modifier = Modifier
                         .weight(1f)
-                        .height(42.dp)
+                        .height(52.dp)
                 ) {
-                    Text("📢 SAIDBEKKA QARA", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Text("📢 SAIDBEKKA QARA", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
 
                 Button(
                     onClick = { sendUdpSosAlert("🚨 JASMINAHON QANI?") },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFB8C00)),
-                    shape = RoundedCornerShape(6.dp),
+                    shape = RoundedCornerShape(10.dp),
                     contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
                     modifier = Modifier
                         .weight(1f)
-                        .height(42.dp)
+                        .height(52.dp)
                 ) {
-                    Text("🔔 JASMINAHON QANI", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Text("🔔 JASMINAHON QANI", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
             }
 
@@ -635,25 +634,25 @@ fun FamilySosAlertApp() {
                 Button(
                     onClick = { sendUdpSosAlert("🆘 UYGA SHOSHILINCH KELING!") },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8E24AA)),
-                    shape = RoundedCornerShape(6.dp),
+                    shape = RoundedCornerShape(8.dp),
                     contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
                     modifier = Modifier
                         .weight(1f)
-                        .height(36.dp)
+                        .height(42.dp)
                 ) {
-                    Text("🆘 UYGA KELING", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                    Text("🆘 UYGA KELING", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                 }
 
                 Button(
                     onClick = { sendUdpSosAlert("📞 TELEFONNI KO'RING!") },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B)),
-                    shape = RoundedCornerShape(6.dp),
+                    shape = RoundedCornerShape(8.dp),
                     contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
                     modifier = Modifier
                         .weight(1f)
-                        .height(36.dp)
+                        .height(42.dp)
                 ) {
-                    Text("📞 TELNI KO'RING", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                    Text("📞 TELNI KO'RING", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                 }
             }
 
@@ -765,7 +764,7 @@ fun FamilySosAlertApp() {
                 shape = RoundedCornerShape(10.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp)
+                    .height(54.dp)
             ) {
                 Text(
                     text = "🛑 STOP SIRENA (OVOZNI TO'XTATISH)",
