@@ -409,6 +409,25 @@ fun FamilySosAlertApp() {
         }
     }
 
+    // Acquire PowerManager WakeLock so Android CPU & 4G Sockets never sleep on 4G Mobile Data!
+    DisposableEffect(Unit) {
+        var wakeLock: android.os.PowerManager.WakeLock? = null
+        try {
+            val powerManager = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            wakeLock = powerManager.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "ConnectSOS::4GWakeLock").apply {
+                acquire(10 * 60 * 1000L /* 10 mins */)
+            }
+        } catch (e: Exception) {}
+
+        onDispose {
+            try {
+                if (wakeLock?.isHeld == true) {
+                    wakeLock.release()
+                }
+            } catch (e: Exception) {}
+        }
+    }
+
     // Option 4: 100% Persistent 4G WebSocket Full-Duplex Stream Listener (Never Drops on 4G!)
     var lastReceivedCloudMsg by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
