@@ -38,7 +38,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -114,68 +113,21 @@ fun FamilySosAlertApp() {
     var lastAlertText by remember { mutableStateOf("") }
     var customMessageText by remember { mutableStateOf("") }
 
+    // Lightweight In-Memory List ONLY (No SharedPreferences Storage, Auto-Cleaned to max 5 items!)
     val chatMessages = remember { mutableStateListOf<SosChatMessage>() }
+
+    // Clean old saved SharedPreferences storage once
+    LaunchedEffect(Unit) {
+        try {
+            prefs.edit().remove("saved_chat_messages").apply()
+            chatMessages.clear()
+        } catch (e: Exception) {}
+    }
 
     // Option 4: Dedicated Real-Time WebSocket & Persistent Socket Relay (Passes 4G CGNAT Firewalls 100%!)
     val cloud4GWebSocketRelayUrl = "https://ntfy.sh/connect_family_sos_websocket_v4_channel"
     val renderCloudUrl = "https://connect-sos-cloud.onrender.com/sos"
     val targetIps = listOf("192.168.100.146", "192.168.100.144", "192.168.43.1", "192.168.1.100")
-
-    // Save Chat Messages to SharedPreferences
-    fun saveChatMessagesToPrefs() {
-        try {
-            val jsonArray = JSONArray()
-            chatMessages.forEach { msg ->
-                val obj = JSONObject().apply {
-                    put("id", msg.id)
-                    put("senderName", msg.senderName)
-                    put("alertText", msg.alertText)
-                    put("timestamp", msg.timestamp)
-                    put("isOutgoing", msg.isOutgoing)
-                }
-                jsonArray.put(obj)
-            }
-            prefs.edit().putString("saved_chat_messages", jsonArray.toString()).apply()
-        } catch (e: Exception) {
-            // Ignore JSON error
-        }
-    }
-
-    // Load Saved Chat Messages on App Start
-    fun loadChatMessagesFromPrefs() {
-        try {
-            val savedJson = prefs.getString("saved_chat_messages", null)
-            if (!savedJson.isNullOrEmpty()) {
-                val jsonArray = JSONArray(savedJson)
-                val loadedList = mutableListOf<SosChatMessage>()
-                for (i in 0 until jsonArray.length()) {
-                    val obj = jsonArray.getJSONObject(i)
-                    loadedList.add(
-                        SosChatMessage(
-                            id = obj.getString("id"),
-                            senderName = obj.getString("senderName"),
-                            alertText = obj.getString("alertText"),
-                            timestamp = obj.getString("timestamp"),
-                            isOutgoing = obj.getBoolean("isOutgoing")
-                        )
-                    )
-                }
-                chatMessages.clear()
-                chatMessages.addAll(loadedList)
-            } else {
-                if (chatMessages.isEmpty()) {
-                    chatMessages.add(SosChatMessage("1", "Oila A'zosi", "🚨 SAIDBEKKA QARA!", "02:18:12", isOutgoing = true))
-                    chatMessages.add(SosChatMessage("2", "Oila A'zosi", "🔔 JASMINAHON QANI?", "02:10:10", isOutgoing = false))
-                }
-            }
-        } catch (e: Exception) {
-            // Ignore error
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        loadChatMessagesFromPrefs()
-    }
 
     // STOP ALL SIREN SOUNDS INSTANTLY
     fun handleStopSirena() {
@@ -237,6 +189,7 @@ fun FamilySosAlertApp() {
         lastAlertText = alertTitle
         isAlertActive = true
 
+        // Keep maximum 5 lightweight messages in memory
         chatMessages.add(0, SosChatMessage(
             id = System.currentTimeMillis().toString(),
             senderName = senderInfo,
@@ -244,7 +197,9 @@ fun FamilySosAlertApp() {
             timestamp = timeNow,
             isOutgoing = false
         ))
-        saveChatMessagesToPrefs()
+        if (chatMessages.size > 5) {
+            chatMessages.removeAt(chatMessages.size - 1)
+        }
 
         // POP UP SCREEN ON INCOMING SOS
         try {
@@ -311,7 +266,7 @@ fun FamilySosAlertApp() {
         // Instant Touch Feedback
         Toast.makeText(context, "📡 4G WEBSOCKET SIGNAL YUBORILDI!", Toast.LENGTH_SHORT).show()
 
-        // Add to sender chat list (NO sound played locally on sender!)
+        // Keep maximum 5 lightweight messages in memory (No SharedPreferences saving!)
         chatMessages.add(0, SosChatMessage(
             id = System.currentTimeMillis().toString(),
             senderName = "$currentDeviceModel (Siz)",
@@ -319,7 +274,9 @@ fun FamilySosAlertApp() {
             timestamp = timeNow,
             isOutgoing = true
         ))
-        saveChatMessagesToPrefs()
+        if (chatMessages.size > 5) {
+            chatMessages.removeAt(chatMessages.size - 1)
+        }
 
         coroutineScope.launch(Dispatchers.IO) {
             // Channel 1: 4G Mobile WebSocket Express Stream
@@ -581,7 +538,7 @@ fun FamilySosAlertApp() {
                             .background(Color.Green)
                     )
                     Text(
-                        text = "📱 $currentDeviceModel (4G WebSocket)",
+                        text = "📱 $currentDeviceModel (Clean RAM Feed)",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp
@@ -753,7 +710,7 @@ fun FamilySosAlertApp() {
             }
 
             Text(
-                text = "SOS Xabarlar Spiskasi (Chat Feed):",
+                text = "SOS Xabarlar Spiskasi (Yengil RAM Feed):",
                 color = Color.LightGray,
                 fontWeight = FontWeight.Bold,
                 fontSize = 11.sp
