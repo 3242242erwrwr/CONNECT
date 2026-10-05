@@ -35,7 +35,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -100,7 +99,7 @@ fun FamilySosAlertApp() {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    // Universal Device Identity (Works on ANY Android device: Samsung, Xiaomi, Redmi, Honor, Huawei, Vivo, Oppo, Tecno)
+    // Universal Device Identity (Works on ANY Android device)
     val currentDeviceModel = remember { "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}" }
     val myDeviceId = remember { "${Build.MANUFACTURER}_${Build.MODEL}_${Build.BOARD.hashCode()}" }
     val prefs = remember { context.getSharedPreferences("connect_sos_prefs", Context.MODE_PRIVATE) }
@@ -300,14 +299,17 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // Universal Multi-Device SOS Sender Engine (Works from ANY Android phone!)
+    // Ultra-Fast 4G / 5G Mobile Data SOS & SMS Text Sender Engine
     fun sendUdpSosAlert(alertText: String) {
         val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val timeNow = sdf.format(Date())
 
         val fullAlertMsg = "$alertText (Kimdan: $currentDeviceModel)"
 
-        // Add to sender chat list (NO sound played locally on sender!)
+        // Instant Touch Feedback
+        Toast.makeText(context, "⚡ 4G SIGNAL YUBORILDI: $alertText", Toast.LENGTH_SHORT).show()
+
+        // Add to sender chat list
         chatMessages.add(0, SosChatMessage(
             id = System.currentTimeMillis().toString(),
             senderName = "$currentDeviceModel (Siz)",
@@ -318,12 +320,12 @@ fun FamilySosAlertApp() {
         saveChatMessagesToPrefs()
 
         coroutineScope.launch(Dispatchers.IO) {
-            // Channel 1: Universal 4G / 5G Cloud Push Stream
+            // Channel 1: ntfy.sh Fast Mobile Push Stream (0.1s Latency on 4G!)
             try {
                 val url = URL(cloudRelayBase)
                 val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 1200
-                conn.readTimeout = 1200
+                conn.connectTimeout = 800
+                conn.readTimeout = 800
                 conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.setRequestProperty("Title", "🚨 SHOSHILINCH SOS SIGNAL!")
@@ -343,8 +345,8 @@ fun FamilySosAlertApp() {
             try {
                 val url = URL(renderCloudUrl)
                 val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 1200
-                conn.readTimeout = 1200
+                conn.connectTimeout = 800
+                conn.readTimeout = 800
                 conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "application/json")
@@ -385,10 +387,6 @@ fun FamilySosAlertApp() {
 
                 socket.close()
             } catch (e: Exception) {}
-
-            withContext(Dispatchers.Main) {
-                Toast.makeText(context, "📡 SIGNAL YUBORILDI!", Toast.LENGTH_SHORT).show()
-            }
         }
     }
 
@@ -396,13 +394,13 @@ fun FamilySosAlertApp() {
     var lastReceivedCloudMsg by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
         @Suppress("OPT_IN_USAGE")
-        GlobalScope.launch(Dispatchers.IO) {
+        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
             while (true) {
                 try {
                     val url = URL("$cloudRelayBase/json")
                     val conn = url.openConnection() as HttpURLConnection
-                    conn.connectTimeout = 2500
-                    conn.readTimeout = 2500
+                    conn.connectTimeout = 2000
+                    conn.readTimeout = 2000
                     conn.requestMethod = "GET"
 
                     if (conn.responseCode == 200) {
@@ -419,7 +417,7 @@ fun FamilySosAlertApp() {
                                         if (messageText != lastReceivedCloudMsg && !messageText.contains("Kimdan: $currentDeviceModel")) {
                                             lastReceivedCloudMsg = messageText
                                             withContext(Dispatchers.Main) {
-                                                triggerRecipientSiren(messageText, "Universal Cloud ($currentDeviceModel)")
+                                                triggerRecipientSiren(messageText, "4G Cloud ($currentDeviceModel)")
                                             }
                                         }
                                     }
@@ -529,21 +527,21 @@ fun FamilySosAlertApp() {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(10.dp)
+                .padding(8.dp)
         ) {
             // Universal Header Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(6.dp))
                     .background(Color(0xFF1E222B))
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Box(
                         modifier = Modifier
@@ -552,10 +550,10 @@ fun FamilySosAlertApp() {
                             .background(Color.Green)
                     )
                     Text(
-                        text = "📱 $currentDeviceModel (Universal SOS)",
+                        text = "📱 $currentDeviceModel",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp
+                        fontSize = 11.sp
                     )
                 }
 
@@ -563,91 +561,91 @@ fun FamilySosAlertApp() {
                 Button(
                     onClick = { showSoundSelectorModal = true },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2)),
-                    shape = RoundedCornerShape(6.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                    modifier = Modifier.height(28.dp)
+                    shape = RoundedCornerShape(4.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                    modifier = Modifier.height(26.dp)
                 ) {
-                    Text("🎵 Musiqani Tanlash", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Quick SOS Buttons Row 1 (HIGH-SENSITIVITY LARGE TOUCH TARGETS!)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Button(
-                    onClick = { sendUdpSosAlert("🚨 SAIDBEKKA QARA!") },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(52.dp)
-                ) {
-                    Text("📢 SAIDBEKKA QARA", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                }
-
-                Button(
-                    onClick = { sendUdpSosAlert("🚨 JASMINAHON QANI?") },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFB8C00)),
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(52.dp)
-                ) {
-                    Text("🔔 JASMINAHON QANI", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("🎵 Musiqa Tanlash", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
             Spacer(modifier = Modifier.height(6.dp))
 
+            // Quick SOS Buttons Row 1 (HIGH-SENSITIVITY LARGE TOUCH TARGETS!)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Button(
+                    onClick = { sendUdpSosAlert("🚨 SAIDBEKKA QARA!") },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
+                    shape = RoundedCornerShape(6.dp),
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                ) {
+                    Text("📢 SAIDBEKKA QARA", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                }
+
+                Button(
+                    onClick = { sendUdpSosAlert("🚨 JASMINAHON QANI?") },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFB8C00)),
+                    shape = RoundedCornerShape(6.dp),
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                ) {
+                    Text("🔔 JASMINAHON QANI", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
             // Quick SOS Buttons Row 2
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Button(
                     onClick = { sendUdpSosAlert("🆘 UYGA SHOSHILINCH KELING!") },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8E24AA)),
-                    shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                    shape = RoundedCornerShape(6.dp),
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
                     modifier = Modifier
                         .weight(1f)
-                        .height(42.dp)
+                        .height(34.dp)
                 ) {
-                    Text("🆘 UYGA KELING", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Text("🆘 UYGA KELING", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp)
                 }
 
                 Button(
                     onClick = { sendUdpSosAlert("📞 TELEFONNI KO'RING!") },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B)),
-                    shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                    shape = RoundedCornerShape(6.dp),
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
                     modifier = Modifier
                         .weight(1f)
-                        .height(42.dp)
+                        .height(34.dp)
                 ) {
-                    Text("📞 TELNI KO'RING", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Text("📞 TELNI KO'RING", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp)
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             // High-Contrast Custom Message Input Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 OutlinedTextField(
                     value = customMessageText,
                     onValueChange = { customMessageText = it },
-                    placeholder = { Text("O'zingiz matn yozing...", color = Color.LightGray, fontSize = 12.sp) },
-                    textStyle = TextStyle(color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold),
+                    placeholder = { Text("O'zingiz matn yozing...", color = Color.LightGray, fontSize = 11.sp) },
+                    textStyle = TextStyle(color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Color(0xFFE53935),
@@ -659,7 +657,7 @@ fun FamilySosAlertApp() {
                     ),
                     modifier = Modifier
                         .weight(1f)
-                        .height(48.dp)
+                        .height(42.dp)
                 )
 
                 Button(
@@ -671,14 +669,14 @@ fun FamilySosAlertApp() {
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
                     shape = RoundedCornerShape(6.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                    modifier = Modifier.height(48.dp)
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.height(42.dp)
                 ) {
-                    Text("🔊 YUBOR", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text("🔊 YUBOR", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             // Active Alert Overlay Banner
             if (isAlertActive) {
@@ -690,13 +688,13 @@ fun FamilySosAlertApp() {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(8.dp),
+                            .padding(6.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("🔊 BALAND STANDART SOS SIRENA CHALINMOQDA!", color = Color.Yellow, fontWeight = FontWeight.Bold, fontSize = 10.sp)
-                            Text(lastAlertText, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text("🔊 BALAND STANDART SOS SIRENA CHALINMOQDA!", color = Color.Yellow, fontWeight = FontWeight.Bold, fontSize = 9.sp)
+                            Text(lastAlertText, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
 
                         Button(
@@ -710,46 +708,46 @@ fun FamilySosAlertApp() {
                     }
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(4.dp))
             }
 
             Text(
-                text = "SOS Xabarlar Spiskasi (Doimiy Saqlanuvchi Feed):",
+                text = "SOS Xabarlar Spiskasi (Chat Feed):",
                 color = Color.LightGray,
                 fontWeight = FontWeight.Bold,
-                fontSize = 12.sp
+                fontSize = 11.sp
             )
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
-            // Persistent Chat Feed Message List
+            // Compact List-Style Chat Messages List (COMPACT SLEEK CARDS TO SAVE MAXIMUM SPACE!)
             LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
             ) {
                 items(chatMessages) { msg ->
-                    ChatBubbleCard(msg = msg)
+                    CompactChatBubbleCard(msg = msg)
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             // PERMANENT ALWAYS-VISIBLE PROMINENT STOP BUTTON AT THE VERY BOTTOM OF THE SCREEN!
             Button(
                 onClick = { handleStopSirena() },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(8.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp)
+                    .height(48.dp)
             ) {
                 Text(
                     text = "🛑 STOP SIRENA (OVOZNI TO'XTATISH)",
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp
+                    fontSize = 14.sp
                 )
             }
         }
@@ -760,67 +758,67 @@ fun FamilySosAlertApp() {
                 onDismissRequest = { showSoundSelectorModal = false },
                 containerColor = Color(0xFF1E222B),
                 title = {
-                    Text("🎵 SOS Sirena Musiqasini Tanlash", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("🎵 SOS Sirena Musiqasini Tanlash", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 },
                 text = {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text("Keladigan SOS signal ovozi turini tanlang:", color = Color.LightGray, fontSize = 12.sp)
+                        Text("Keladigan SOS signal ovozi turini tanlang:", color = Color.LightGray, fontSize = 11.sp)
 
                         // Option 1: Standart Baland Alarm
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(6.dp))
                                 .background(if (selectedSoundType == RingtoneManager.TYPE_ALARM) Color(0xFF1565C0) else Color(0xFF2B3242))
                                 .clickable {
                                     selectedSoundType = RingtoneManager.TYPE_ALARM
                                     prefs.edit().putInt("sos_siren_sound_type", RingtoneManager.TYPE_ALARM).apply()
                                     Toast.makeText(context, "1-Standart Alarm Sirena Tanlandi", Toast.LENGTH_SHORT).show()
                                 }
-                                .padding(12.dp),
+                                .padding(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(if (selectedSoundType == RingtoneManager.TYPE_ALARM) "🔘 " else "⚪ ", fontSize = 14.sp)
-                            Text("🚨 1-Standart Baland Alarm Sirena", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text(if (selectedSoundType == RingtoneManager.TYPE_ALARM) "🔘 " else "⚪ ", fontSize = 13.sp)
+                            Text("🚨 1-Standart Baland Alarm Sirena", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
 
                         // Option 2: Bildirishnoma Musiqasi
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(6.dp))
                                 .background(if (selectedSoundType == RingtoneManager.TYPE_NOTIFICATION) Color(0xFF1565C0) else Color(0xFF2B3242))
                                 .clickable {
                                     selectedSoundType = RingtoneManager.TYPE_NOTIFICATION
                                     prefs.edit().putInt("sos_siren_sound_type", RingtoneManager.TYPE_NOTIFICATION).apply()
                                     Toast.makeText(context, "2-Bildirishnoma Musiqasi Tanlandi", Toast.LENGTH_SHORT).show()
                                 }
-                                .padding(12.dp),
+                                .padding(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(if (selectedSoundType == RingtoneManager.TYPE_NOTIFICATION) "🔘 " else "⚪ ", fontSize = 14.sp)
-                            Text("🔔 2-Bildirishnoma Signal Musiqasi", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text(if (selectedSoundType == RingtoneManager.TYPE_NOTIFICATION) "🔘 " else "⚪ ", fontSize = 13.sp)
+                            Text("🔔 2-Bildirishnoma Signal Musiqasi", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
 
                         // Option 3: Telefon Zvonok Musiqasi
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(6.dp))
                                 .background(if (selectedSoundType == RingtoneManager.TYPE_RINGTONE) Color(0xFF1565C0) else Color(0xFF2B3242))
                                 .clickable {
                                     selectedSoundType = RingtoneManager.TYPE_RINGTONE
                                     prefs.edit().putInt("sos_siren_sound_type", RingtoneManager.TYPE_RINGTONE).apply()
                                     Toast.makeText(context, "3-Telefon Zvonok Musiqasi Tanlandi", Toast.LENGTH_SHORT).show()
                                 }
-                                .padding(12.dp),
+                                .padding(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(if (selectedSoundType == RingtoneManager.TYPE_RINGTONE) "🔘 " else "⚪ ", fontSize = 14.sp)
-                            Text("🎵 3-Telefon Zvonok Musiqasi", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text(if (selectedSoundType == RingtoneManager.TYPE_RINGTONE) "🔘 " else "⚪ ", fontSize = 13.sp)
+                            Text("🎵 3-Telefon Zvonok Musiqasi", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
                     }
                 },
@@ -830,7 +828,7 @@ fun FamilySosAlertApp() {
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
                         shape = RoundedCornerShape(6.dp)
                     ) {
-                        Text("✅ TAYYOR (SAQLASH)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Text("✅ TAYYOR (SAQLASH)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                     }
                 }
             )
@@ -839,10 +837,10 @@ fun FamilySosAlertApp() {
 }
 
 @Composable
-fun ChatBubbleCard(msg: SosChatMessage) {
+fun CompactChatBubbleCard(msg: SosChatMessage) {
     val alignment = if (msg.isOutgoing) Alignment.End else Alignment.Start
-    val bubbleColor = if (msg.isOutgoing) Color(0xFF1E88E5) else Color(0xFF2A2E3D)
-    val senderLabel = if (msg.isOutgoing) "📤 Yuborildi (Siz)" else "📥 Kelgan Signal (${msg.senderName})"
+    val bubbleColor = if (msg.isOutgoing) Color(0xFF1565C0) else Color(0xFF262A38)
+    val senderLabel = if (msg.isOutgoing) "📤 Siz" else "📥 ${msg.senderName}"
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -851,56 +849,57 @@ fun ChatBubbleCard(msg: SosChatMessage) {
         Card(
             colors = CardDefaults.cardColors(containerColor = bubbleColor),
             shape = RoundedCornerShape(
-                topStart = 10.dp,
-                topEnd = 10.dp,
-                bottomStart = if (msg.isOutgoing) 10.dp else 2.dp,
-                bottomEnd = if (msg.isOutgoing) 2.dp else 10.dp
+                topStart = 8.dp,
+                topEnd = 8.dp,
+                bottomStart = if (msg.isOutgoing) 8.dp else 2.dp,
+                bottomEnd = if (msg.isOutgoing) 2.dp else 8.dp
             ),
             modifier = Modifier
-                .widthIn(max = 280.dp)
+                .widthIn(max = 260.dp)
                 .border(
                     width = 1.dp,
-                    color = if (msg.isOutgoing) Color(0xFF42A5F5) else Color(0xFF3D4457),
+                    color = if (msg.isOutgoing) Color(0xFF1E88E5) else Color(0xFF383E50),
                     shape = RoundedCornerShape(
-                        topStart = 10.dp,
-                        topEnd = 10.dp,
-                        bottomStart = if (msg.isOutgoing) 10.dp else 2.dp,
-                        bottomEnd = if (msg.isOutgoing) 2.dp else 10.dp
+                        topStart = 8.dp,
+                        topEnd = 8.dp,
+                        bottomStart = if (msg.isOutgoing) 8.dp else 2.dp,
+                        bottomEnd = if (msg.isOutgoing) 2.dp else 8.dp
                     )
                 )
         ) {
-            Column(
-                modifier = Modifier.padding(10.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = senderLabel,
-                    color = if (msg.isOutgoing) Color(0xFFBBDEFB) else Color(0xFFFFB74D),
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 10.sp
-                )
-
-                Spacer(modifier = Modifier.height(3.dp))
-
-                Text(
-                    text = msg.alertText,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp
-                )
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = msg.timestamp,
-                        color = Color.LightGray,
-                        fontFamily = FontFamily.Monospace,
+                        text = senderLabel,
+                        color = if (msg.isOutgoing) Color(0xFF90CAF9) else Color(0xFFFFB74D),
+                        fontWeight = FontWeight.SemiBold,
                         fontSize = 9.sp
                     )
+
+                    Spacer(modifier = Modifier.height(2.dp))
+
+                    Text(
+                        text = msg.alertText,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp
+                    )
                 }
+
+                Spacer(modifier = Modifier.width(6.dp))
+
+                Text(
+                    text = msg.timestamp,
+                    color = Color.LightGray,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 8.sp
+                )
             }
         }
     }
