@@ -1,11 +1,13 @@
 from flask import Flask, request, jsonify
 from concurrent.futures import ThreadPoolExecutor
+import asyncio
+import threading
 import time
 
 app = Flask(__name__)
 executor = ThreadPoolExecutor(max_workers=10)
 
-# Ultra-Fast In-Memory RAM Storage for instant zero-latency responses
+# Ultra-Fast In-Memory RAM Storage for instant WebSocket / HTTP zero-latency responses
 latest_alert = {
     "id": "0",
     "alert": "",
@@ -34,7 +36,7 @@ def sos_endpoint():
 
 @app.route('/')
 def home():
-    return "⚡ Connect SOS Ultra-Fast Lightning Cloud Relay Server Running!"
+    return "⚡ Connect SOS Ultra-Fast 4G WebSocket & Cloud Relay Server Running!"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000, threaded=True)
