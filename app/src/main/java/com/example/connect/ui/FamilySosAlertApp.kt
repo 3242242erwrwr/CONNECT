@@ -773,12 +773,12 @@ fun FamilySosAlertApp() {
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Compact List-Style Chat Messages List
+            // Compact List-Style Chat Messages List (COMPACT 120dp HEIGHT MAX)
             LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
+                    .heightIn(max = 120.dp)
             ) {
                 items(chatMessages) { msg ->
                     CompactChatBubbleCard(msg = msg)
