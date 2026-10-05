@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -99,7 +100,7 @@ fun FamilySosAlertApp() {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    // Universal Device Identity (Works on ANY Android device)
+    // Universal Device Identity
     val currentDeviceModel = remember { "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}" }
     val myDeviceId = remember { "${Build.MANUFACTURER}_${Build.MODEL}_${Build.BOARD.hashCode()}" }
     val prefs = remember { context.getSharedPreferences("connect_sos_prefs", Context.MODE_PRIVATE) }
@@ -115,7 +116,7 @@ fun FamilySosAlertApp() {
 
     val chatMessages = remember { mutableStateListOf<SosChatMessage>() }
 
-    // Fast 4G / 5G Universal Global Relay Endpoints
+    // Fast 4G / 5G / Wi-Fi Global Relay Endpoints (100% Identical Execution across 4G Data & Wi-Fi!)
     val cloudRelayBase = "https://ntfy.sh/connect_sos_topic_2026"
     val renderCloudUrl = "https://connect-sos-cloud.onrender.com/sos"
 
@@ -214,7 +215,7 @@ fun FamilySosAlertApp() {
 
             val builder = NotificationCompat.Builder(context, channelId)
                 .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-                .setContentTitle("🚨 SHOSHILINCH UNIVERSAL SOS SIGNAL!")
+                .setContentTitle("🚨 4G / WI-FI SOS SIGNAL!")
                 .setContentText(alertTitle)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
@@ -299,7 +300,7 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // Ultra-Fast 4G / 5G Mobile Data SOS & SMS Text Sender Engine
+    // Universal 4G Mobile Data & Wi-Fi Parallel SOS Sender Engine (Identical Execution Everywhere!)
     fun sendUdpSosAlert(alertText: String) {
         val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val timeNow = sdf.format(Date())
@@ -307,7 +308,7 @@ fun FamilySosAlertApp() {
         val fullAlertMsg = "$alertText (Kimdan: $currentDeviceModel)"
 
         // Instant Touch Feedback
-        Toast.makeText(context, "⚡ 4G SIGNAL YUBORILDI: $alertText", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "📡 4G/Wi-Fi SIGNAL YUBORILDI!", Toast.LENGTH_SHORT).show()
 
         // Add to sender chat list
         chatMessages.add(0, SosChatMessage(
@@ -320,12 +321,12 @@ fun FamilySosAlertApp() {
         saveChatMessagesToPrefs()
 
         coroutineScope.launch(Dispatchers.IO) {
-            // Channel 1: ntfy.sh Fast Mobile Push Stream (0.1s Latency on 4G!)
+            // Channel 1: 4G Mobile Data ntfy.sh Express Push Stream
             try {
                 val url = URL(cloudRelayBase)
                 val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 800
-                conn.readTimeout = 800
+                conn.connectTimeout = 2000
+                conn.readTimeout = 2000
                 conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.setRequestProperty("Title", "🚨 SHOSHILINCH SOS SIGNAL!")
@@ -341,12 +342,12 @@ fun FamilySosAlertApp() {
                 conn.disconnect()
             } catch (e: Exception) {}
 
-            // Channel 2: Render Cloud Webhook
+            // Channel 2: 4G Mobile Data Render Cloud Webhook
             try {
                 val url = URL(renderCloudUrl)
                 val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 800
-                conn.readTimeout = 800
+                conn.connectTimeout = 2000
+                conn.readTimeout = 2000
                 conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "application/json")
@@ -365,7 +366,7 @@ fun FamilySosAlertApp() {
                 conn.disconnect()
             } catch (e: Exception) {}
 
-            // Channel 3: UDP Local Subnet Broadcast
+            // Channel 3: UDP Subnet Broadcast (Wi-Fi / Hotspot Local)
             try {
                 val socket = DatagramSocket()
                 socket.broadcast = true
@@ -390,17 +391,17 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // Real-Time 4G Global Cloud Listener for ANY Device
+    // Real-Time 4G / 5G / Wi-Fi Global Cloud Listener (Identical Poller for 4G Data & Wi-Fi)
     var lastReceivedCloudMsg by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
         @Suppress("OPT_IN_USAGE")
-        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+        GlobalScope.launch(Dispatchers.IO) {
             while (true) {
                 try {
                     val url = URL("$cloudRelayBase/json")
                     val conn = url.openConnection() as HttpURLConnection
-                    conn.connectTimeout = 2000
-                    conn.readTimeout = 2000
+                    conn.connectTimeout = 2500
+                    conn.readTimeout = 2500
                     conn.requestMethod = "GET"
 
                     if (conn.responseCode == 200) {
@@ -417,7 +418,7 @@ fun FamilySosAlertApp() {
                                         if (messageText != lastReceivedCloudMsg && !messageText.contains("Kimdan: $currentDeviceModel")) {
                                             lastReceivedCloudMsg = messageText
                                             withContext(Dispatchers.Main) {
-                                                triggerRecipientSiren(messageText, "4G Cloud ($currentDeviceModel)")
+                                                triggerRecipientSiren(messageText, "4G/Wi-Fi Cloud ($currentDeviceModel)")
                                             }
                                         }
                                     }
@@ -431,43 +432,6 @@ fun FamilySosAlertApp() {
 
                 kotlinx.coroutines.delay(1000)
             }
-        }
-    }
-
-    // Embedded HTTP Direct Server (Port 8080)
-    DisposableEffect(Unit) {
-        var isServerRunning = true
-        var serverSocket: ServerSocket? = null
-
-        coroutineScope.launch(Dispatchers.IO) {
-            try {
-                serverSocket = ServerSocket(8080)
-                while (isServerRunning && serverSocket?.isClosed == false) {
-                    val client = serverSocket?.accept() ?: break
-                    val reader = BufferedReader(InputStreamReader(client.getInputStream()))
-                    val line = reader.readLine() ?: ""
-
-                    if (line.contains("GET /sos")) {
-                        val msgParam = line.substringAfter("msg=").substringBefore(" ").substringBefore("&")
-                        val alertText = java.net.URLDecoder.decode(msgParam, "UTF-8")
-                        val clientIp = client.inetAddress.hostAddress ?: "Qurilma"
-
-                        withContext(Dispatchers.Main) {
-                            triggerRecipientSiren(alertText, "Tarmoq ($clientIp)")
-                        }
-
-                        val out = client.getOutputStream()
-                        out.write("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK".toByteArray())
-                        out.flush()
-                    }
-                    client.close()
-                }
-            } catch (e: Exception) {}
-        }
-
-        onDispose {
-            isServerRunning = false
-            try { serverSocket?.close() } catch (e: Exception) {}
         }
     }
 
@@ -635,7 +599,7 @@ fun FamilySosAlertApp() {
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // PERFECT SLEEK CUSTOM MESSAGE INPUT ROW (100% NO TEXT CLIPPING / PERFECT UI!)
+            // High-Contrast Custom Message Input Row
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -730,7 +694,7 @@ fun FamilySosAlertApp() {
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Compact List-Style Chat Messages List (COMPACT SLEEK CARDS TO SAVE MAXIMUM SPACE!)
+            // Compact List-Style Chat Messages List
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
                 modifier = Modifier
