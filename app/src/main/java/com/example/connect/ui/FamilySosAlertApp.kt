@@ -16,7 +16,6 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -36,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -100,13 +100,9 @@ fun FamilySosAlertApp() {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    val isHuaweiDevice = remember {
-        Build.MANUFACTURER.contains("HUAWEI", ignoreCase = true) ||
-                Build.MODEL.contains("CTR-L91", ignoreCase = true) ||
-                Build.BRAND.contains("HUAWEI", ignoreCase = true)
-    }
-
-    val myDeviceId = remember { if (isHuaweiDevice) "HUAWEI_NOVA_13i" else "HONOR_X8a" }
+    // Universal Device Identity (Works on ANY Android device: Samsung, Xiaomi, Redmi, Honor, Huawei, Vivo, Oppo, Tecno)
+    val currentDeviceModel = remember { "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}" }
+    val myDeviceId = remember { "${Build.MANUFACTURER}_${Build.MODEL}_${Build.BOARD.hashCode()}" }
     val prefs = remember { context.getSharedPreferences("connect_sos_prefs", Context.MODE_PRIVATE) }
 
     var selectedSoundType by remember {
@@ -120,10 +116,9 @@ fun FamilySosAlertApp() {
 
     val chatMessages = remember { mutableStateListOf<SosChatMessage>() }
 
-    // Fast 4G / 5G Global Relay Endpoints (0.1 Second Latency Everywhere!)
+    // Fast 4G / 5G Universal Global Relay Endpoints
     val cloudRelayBase = "https://ntfy.sh/connect_sos_topic_2026"
     val renderCloudUrl = "https://connect-sos-cloud.onrender.com/sos"
-    val targetIps = listOf("192.168.100.146", "192.168.100.144", "192.168.43.1", "192.168.1.100")
 
     // Save Chat Messages to SharedPreferences
     fun saveChatMessagesToPrefs() {
@@ -168,8 +163,8 @@ fun FamilySosAlertApp() {
                 chatMessages.addAll(loadedList)
             } else {
                 if (chatMessages.isEmpty()) {
-                    chatMessages.add(SosChatMessage("1", "Honor X8a", "🚨 SAIDBEKKA QARA!", "02:18:12", isOutgoing = true))
-                    chatMessages.add(SosChatMessage("2", "HUAWEI nova 13i", "🔔 JASMINAHON QANI?", "02:10:10", isOutgoing = false))
+                    chatMessages.add(SosChatMessage("1", "Oila A'zosi", "🚨 SAIDBEKKA QARA!", "02:18:12", isOutgoing = true))
+                    chatMessages.add(SosChatMessage("2", "Oila A'zosi", "🔔 JASMINAHON QANI?", "02:10:10", isOutgoing = false))
                 }
             }
         } catch (e: Exception) {
@@ -220,7 +215,7 @@ fun FamilySosAlertApp() {
 
             val builder = NotificationCompat.Builder(context, channelId)
                 .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-                .setContentTitle("🚨 4G MOBILE SOS SIGNAL!")
+                .setContentTitle("🚨 SHOSHILINCH UNIVERSAL SOS SIGNAL!")
                 .setContentText(alertTitle)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
@@ -305,21 +300,17 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // Ultra-Responsive High Sensitivity Touch Sender Handler
+    // Universal Multi-Device SOS Sender Engine (Works from ANY Android phone!)
     fun sendUdpSosAlert(alertText: String) {
         val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val timeNow = sdf.format(Date())
 
-        val senderTag = if (isHuaweiDevice) "HUAWEI nova 13i" else "Honor X8a"
-        val fullAlertMsg = "$alertText (Kimdan: $senderTag)"
+        val fullAlertMsg = "$alertText (Kimdan: $currentDeviceModel)"
 
-        // Instant Touch Feedback Toast!
-        Toast.makeText(context, "⚡ SIGNAL YUBORILDI: $alertText", Toast.LENGTH_SHORT).show()
-
-        // Add to sender chat list
+        // Add to sender chat list (NO sound played locally on sender!)
         chatMessages.add(0, SosChatMessage(
             id = System.currentTimeMillis().toString(),
-            senderName = "$senderTag (Siz)",
+            senderName = "$currentDeviceModel (Siz)",
             alertText = alertText,
             timestamp = timeNow,
             isOutgoing = true
@@ -327,18 +318,18 @@ fun FamilySosAlertApp() {
         saveChatMessagesToPrefs()
 
         coroutineScope.launch(Dispatchers.IO) {
-            // Channel 1: ntfy.sh Fast Mobile Push Stream
+            // Channel 1: Universal 4G / 5G Cloud Push Stream
             try {
                 val url = URL(cloudRelayBase)
                 val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 1000
-                conn.readTimeout = 1000
+                conn.connectTimeout = 1200
+                conn.readTimeout = 1200
                 conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.setRequestProperty("Title", "🚨 SHOSHILINCH SOS SIGNAL!")
                 conn.setRequestProperty("Priority", "5")
                 conn.setRequestProperty("Connection", "close")
-                conn.setRequestProperty("User-Agent", "ConnectSOSApp/1.0 ($senderTag)")
+                conn.setRequestProperty("User-Agent", "ConnectSOSApp/1.0 ($currentDeviceModel)")
 
                 val writer = OutputStreamWriter(conn.outputStream, "UTF-8")
                 writer.write(fullAlertMsg)
@@ -348,12 +339,12 @@ fun FamilySosAlertApp() {
                 conn.disconnect()
             } catch (e: Exception) {}
 
-            // Channel 2: Render.com Cloud Webhook
+            // Channel 2: Render Cloud Webhook
             try {
                 val url = URL(renderCloudUrl)
                 val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 1000
-                conn.readTimeout = 1000
+                conn.connectTimeout = 1200
+                conn.readTimeout = 1200
                 conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "application/json")
@@ -361,7 +352,7 @@ fun FamilySosAlertApp() {
 
                 val jsonPayload = JSONObject().apply {
                     put("alert", fullAlertMsg)
-                    put("sender", senderTag)
+                    put("sender", currentDeviceModel)
                 }.toString()
 
                 val writer = OutputStreamWriter(conn.outputStream, "UTF-8")
@@ -372,21 +363,7 @@ fun FamilySosAlertApp() {
                 conn.disconnect()
             } catch (e: Exception) {}
 
-            // Channel 3: Direct Local Wi-Fi HTTP Requests
-            targetIps.forEach { ip ->
-                try {
-                    val encodedMsg = URLEncoder.encode(fullAlertMsg, "UTF-8")
-                    val url = URL("http://$ip:8080/sos?msg=$encodedMsg")
-                    val conn = url.openConnection() as HttpURLConnection
-                    conn.connectTimeout = 400
-                    conn.readTimeout = 400
-                    conn.requestMethod = "GET"
-                    conn.responseCode
-                    conn.disconnect()
-                } catch (e: Exception) {}
-            }
-
-            // Channel 4: UDP Local Subnet Broadcast
+            // Channel 3: UDP Local Subnet Broadcast
             try {
                 val socket = DatagramSocket()
                 socket.broadcast = true
@@ -408,20 +385,24 @@ fun FamilySosAlertApp() {
 
                 socket.close()
             } catch (e: Exception) {}
+
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "📡 SIGNAL YUBORILDI!", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
-    // Real-Time 4G Global Cloud Listener (Listens to ntfy.sh channel /json stream)
+    // Real-Time 4G Global Cloud Listener for ANY Device
     var lastReceivedCloudMsg by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
         @Suppress("OPT_IN_USAGE")
-        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+        GlobalScope.launch(Dispatchers.IO) {
             while (true) {
                 try {
                     val url = URL("$cloudRelayBase/json")
                     val conn = url.openConnection() as HttpURLConnection
-                    conn.connectTimeout = 2000
-                    conn.readTimeout = 2000
+                    conn.connectTimeout = 2500
+                    conn.readTimeout = 2500
                     conn.requestMethod = "GET"
 
                     if (conn.responseCode == 200) {
@@ -435,12 +416,10 @@ fun FamilySosAlertApp() {
                                     val messageText = jsonObj.optString("message", "")
 
                                     if (eventType == "message" && messageText.isNotBlank()) {
-                                        val mySenderTag = if (isHuaweiDevice) "HUAWEI nova 13i" else "Honor X8a"
-
-                                        if (messageText != lastReceivedCloudMsg && !messageText.contains("Kimdan: $mySenderTag")) {
+                                        if (messageText != lastReceivedCloudMsg && !messageText.contains("Kimdan: $currentDeviceModel")) {
                                             lastReceivedCloudMsg = messageText
                                             withContext(Dispatchers.Main) {
-                                                triggerRecipientSiren(messageText, "4G Cloud ($mySenderTag)")
+                                                triggerRecipientSiren(messageText, "Universal Cloud ($currentDeviceModel)")
                                             }
                                         }
                                     }
@@ -552,7 +531,7 @@ fun FamilySosAlertApp() {
                 .fillMaxSize()
                 .padding(10.dp)
         ) {
-            // Compact Header Bar
+            // Universal Header Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -573,7 +552,7 @@ fun FamilySosAlertApp() {
                             .background(Color.Green)
                     )
                     Text(
-                        text = if (isHuaweiDevice) "📱 HUAWEI Terminal" else "📱 Honor X8a Boshqaruv",
+                        text = "📱 $currentDeviceModel (Universal SOS)",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp
@@ -764,7 +743,7 @@ fun FamilySosAlertApp() {
                 shape = RoundedCornerShape(10.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(54.dp)
+                    .height(52.dp)
             ) {
                 Text(
                     text = "🛑 STOP SIRENA (OVOZNI TO'XTATISH)",
