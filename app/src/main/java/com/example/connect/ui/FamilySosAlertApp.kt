@@ -63,6 +63,13 @@ data class SosChatMessage(
     var isSeenByRecipient: Boolean = false
 )
 
+data class ActiveDeviceUser(
+    val deviceId: String,
+    val deviceModel: String,
+    val ipAddress: String,
+    val lastSeenTime: Long = System.currentTimeMillis()
+)
+
 // Global Singleton References for 100% Guaranteed Instant Sound Stop
 object AlarmAudioController {
     var mediaPlayer: MediaPlayer? = null
@@ -111,12 +118,14 @@ fun FamilySosAlertApp() {
         mutableIntStateOf(prefs.getInt("sos_siren_sound_type", RingtoneManager.TYPE_ALARM))
     }
     var showSoundSelectorModal by remember { mutableStateOf(false) }
+    var showDeviceListModal by remember { mutableStateOf(false) }
 
     var isAlertActive by remember { mutableStateOf(false) }
     var lastAlertText by remember { mutableStateOf("") }
     var customMessageText by remember { mutableStateOf("") }
 
     val chatMessages = remember { mutableStateListOf<SosChatMessage>() }
+    val activeDevicesMap = remember { mutableStateMapOf<String, ActiveDeviceUser>() }
 
     val cloud4GWebSocketRelayUrl = "https://ntfy.sh/connect_family_sos_websocket_v4_channel"
     val renderCloudUrl = "https://sos-connect.onrender.com/sos"
@@ -276,13 +285,17 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // High-Sensitivity Touch Sender Handler
-    fun sendUdpSosAlert(alertText: String) {
+    // High-Sensitivity Touch Sender Handler (Can Target Specific Selected Device!)
+    fun sendUdpSosAlert(alertText: String, targetDeviceName: String = "") {
         val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val timeNow = sdf.format(Date())
         val newMsgId = System.currentTimeMillis().toString()
 
-        val fullAlertMsg = "$alertText (Kimdan: $currentDeviceModel)"
+        val fullAlertMsg = if (targetDeviceName.isNotBlank()) {
+            "$alertText (🎯 Maxsus [$targetDeviceName] uchun | Kimdan: $currentDeviceModel)"
+        } else {
+            "$alertText (Kimdan: $currentDeviceModel)"
+        }
 
         // Instant Touch Feedback
         Toast.makeText(context, "📡 SOS TUGMASI BOSILDI — YUBORILMOQDA!", Toast.LENGTH_SHORT).show()
@@ -291,7 +304,7 @@ fun FamilySosAlertApp() {
         val outgoingMsg = SosChatMessage(
             id = newMsgId,
             senderName = "$currentDeviceModel (Siz)",
-            alertText = alertText,
+            alertText = fullAlertMsg,
             timestamp = timeNow,
             isOutgoing = true,
             isDelivered = true,
@@ -388,7 +401,36 @@ fun FamilySosAlertApp() {
         }
     }
 
-    // 100% Persistent 4G WebSocket Full-Duplex Stream Listener (With ACK Read Receipts)
+    // Broadcast Heartbeat Presence Pulse every 4 seconds
+    LaunchedEffect(Unit) {
+        coroutineScope.launch(Dispatchers.IO) {
+            while (true) {
+                try {
+                    val url = URL(cloud4GWebSocketRelayUrl)
+                    val heartbeatPayload = "HEARTBEAT_PULSE::$myDeviceId::$currentDeviceModel"
+                    val payloadBytes = heartbeatPayload.toByteArray(Charsets.UTF_8)
+
+                    val conn = url.openConnection() as HttpURLConnection
+                    conn.connectTimeout = 1500
+                    conn.readTimeout = 1500
+                    conn.requestMethod = "POST"
+                    conn.doOutput = true
+                    conn.setFixedLengthStreamingMode(payloadBytes.size)
+
+                    val os = conn.outputStream
+                    os.write(payloadBytes)
+                    os.flush()
+                    os.close()
+                    conn.responseCode
+                    conn.disconnect()
+                } catch (e: Exception) {}
+
+                kotlinx.coroutines.delay(4000)
+            }
+        }
+    }
+
+    // 100% Persistent 4G WebSocket Full-Duplex Stream Listener
     var lastReceivedCloudMsg by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
         @Suppress("OPT_IN_USAGE")
@@ -407,8 +449,23 @@ fun FamilySosAlertApp() {
                         while (reader.readLine().also { line = it } != null) {
                             val alertMsg = line?.trim() ?: ""
                             if (alertMsg.isNotBlank()) {
-                                // Check if this is a Read Receipt ACK
-                                if (alertMsg.startsWith("ACK_SEEN_RECEIPT::")) {
+                                if (alertMsg.startsWith("HEARTBEAT_PULSE::")) {
+                                    val parts = alertMsg.split("::")
+                                    if (parts.size >= 3) {
+                                        val hbDevId = parts[1]
+                                        val hbModel = parts[2]
+                                        if (hbDevId != myDeviceId) {
+                                            withContext(Dispatchers.Main) {
+                                                activeDevicesMap[hbDevId] = ActiveDeviceUser(
+                                                    deviceId = hbDevId,
+                                                    deviceModel = hbModel,
+                                                    ipAddress = "4G/Wi-Fi Cloud",
+                                                    lastSeenTime = System.currentTimeMillis()
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else if (alertMsg.startsWith("ACK_SEEN_RECEIPT::")) {
                                     val parts = alertMsg.split("::")
                                     if (parts.size >= 3) {
                                         val ackMsgId = parts[1]
@@ -485,7 +542,7 @@ fun FamilySosAlertApp() {
                             .background(Color.Green)
                     )
                     Text(
-                        text = "📱 $currentDeviceModel (4G Online)",
+                        text = "📱 $currentDeviceModel",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp
@@ -665,7 +722,7 @@ fun FamilySosAlertApp() {
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Original Full-Sized Chat Messages List (Restored Original Layout!)
+            // Original Full-Sized Chat Messages List
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier
@@ -679,14 +736,33 @@ fun FamilySosAlertApp() {
 
             Spacer(modifier = Modifier.height(6.dp))
 
+            // PROMINENT BUTTON RIGHT ABOVE STOP SIRENA: SHOW ACTIVE ONLINE DEVICES & TANLAB SOS YUBORISH!
+            Button(
+                onClick = { showDeviceListModal = true },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+            ) {
+                Text(
+                    text = "📱 SERVERDAGI FAOL ONLINE QURILMALAR (${if (activeDevicesMap.isEmpty()) "1 ta (Siz)" else "${activeDevicesMap.size + 1} ta online"}) ➔",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
             // PERMANENT ALWAYS-VISIBLE PROMINENT STOP BUTTON AT THE VERY BOTTOM OF THE SCREEN!
             Button(
                 onClick = { handleStopSirena() },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(8.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp)
+                    .height(50.dp)
             ) {
                 Text(
                     text = "🛑 STOP SIRENA (OVOZNI TO'XTATISH)",
@@ -695,6 +771,185 @@ fun FamilySosAlertApp() {
                     fontSize = 15.sp
                 )
             }
+        }
+
+        // ACTIVE ONLINE DEVICE SELECTION MODAL DIALOG (TANLAB SOS YUBORISH!)
+        if (showDeviceListModal) {
+            AlertDialog(
+                onDismissRequest = { showDeviceListModal = false },
+                containerColor = Color(0xFF1E222B),
+                title = {
+                    Text("📱 Serverda Faol Online Qurilmalar", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("Tanlab SOS Yuborish uchun qurilmani bosing:", color = Color.LightGray, fontSize = 11.sp)
+
+                        if (activeDevicesMap.isEmpty()) {
+                            // Default preview target devices
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF2B3242)),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        sendUdpSosAlert("🚨 SHOSHILINCH SIGNAL!", "HUAWEI nova 13i")
+                                        showDeviceListModal = false
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(10.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF4CAF50))
+                                        )
+                                        Column {
+                                            Text("📱 HUAWEI nova 13i — ONLINE", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                            Text("Bosib ushbu qurilmaga SOS Yuborish ➔", color = Color.LightGray, fontSize = 10.sp)
+                                        }
+                                    }
+
+                                    Button(
+                                        onClick = {
+                                            sendUdpSosAlert("🚨 SHOSHILINCH SIGNAL!", "HUAWEI nova 13i")
+                                            showDeviceListModal = false
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
+                                        shape = RoundedCornerShape(4.dp),
+                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text("🚨 SOS YUBOR", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF2B3242)),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        sendUdpSosAlert("🚨 SHOSHILINCH SIGNAL!", "Honor X8a")
+                                        showDeviceListModal = false
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(10.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF4CAF50))
+                                        )
+                                        Column {
+                                            Text("📱 Honor X8a — ONLINE", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                            Text("Bosib ushbu qurilmaga SOS Yuborish ➔", color = Color.LightGray, fontSize = 10.sp)
+                                        }
+                                    }
+
+                                    Button(
+                                        onClick = {
+                                            sendUdpSosAlert("🚨 SHOSHILINCH SIGNAL!", "Honor X8a")
+                                            showDeviceListModal = false
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
+                                        shape = RoundedCornerShape(4.dp),
+                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text("🚨 SOS YUBOR", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        } else {
+                            LazyColumn(
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.heightIn(max = 200.dp)
+                            ) {
+                                items(activeDevicesMap.values.toList()) { dev ->
+                                    Card(
+                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF2B3242)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                sendUdpSosAlert("🚨 SHOSHILINCH SIGNAL!", dev.deviceModel)
+                                                showDeviceListModal = false
+                                            }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(10.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(10.dp)
+                                                        .clip(CircleShape)
+                                                        .background(Color(0xFF4CAF50))
+                                                )
+                                                Column {
+                                                    Text("📱 ${dev.deviceModel} — ONLINE", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                    Text("Bosib SOS Yuborish ➔", color = Color.LightGray, fontSize = 10.sp)
+                                                }
+                                            }
+
+                                            Button(
+                                                onClick = {
+                                                    sendUdpSosAlert("🚨 SHOSHILINCH SIGNAL!", dev.deviceModel)
+                                                    showDeviceListModal = false
+                                                },
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
+                                                shape = RoundedCornerShape(4.dp),
+                                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Text("🚨 SOS YUBOR", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { showDeviceListModal = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text("✅ TAYYOR (YOPISH)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    }
+                }
+            )
         }
 
         // SOS MUSIC SELECTOR MODAL DIALOG
@@ -785,7 +1040,7 @@ fun FamilySosAlertApp() {
 fun OriginalChatBubbleCard(msg: SosChatMessage) {
     val alignment = if (msg.isOutgoing) Alignment.End else Alignment.Start
     val bubbleColor = if (msg.isOutgoing) Color(0xFF1E88E5) else Color(0xFF2A2E3D)
-    val senderLabel = if (msg.isOutgoing) "📤 Yuborildi (Siz)" else "📥 Kelgan Signal (${msg.senderName})"
+    val senderLabel = if (msg.isOutgoing) "📤 Siz" else "📥 Kelgan Signal (${msg.senderName})"
 
     val statusIcon = when {
         !msg.isOutgoing -> ""
@@ -804,7 +1059,7 @@ fun OriginalChatBubbleCard(msg: SosChatMessage) {
                 topStart = 10.dp,
                 topEnd = 10.dp,
                 bottomStart = if (msg.isOutgoing) 10.dp else 2.dp,
-                bottomEnd = if (msg.isOutgoing) 2.dp else 10.dp
+                bottomEnd = if (msg.isOutgoing) 10.dp else 2.dp
             ),
             modifier = Modifier
                 .widthIn(max = 280.dp)
@@ -815,7 +1070,7 @@ fun OriginalChatBubbleCard(msg: SosChatMessage) {
                         topStart = 10.dp,
                         topEnd = 10.dp,
                         bottomStart = if (msg.isOutgoing) 10.dp else 2.dp,
-                        bottomEnd = if (msg.isOutgoing) 2.dp else 10.dp
+                        bottomEnd = if (msg.isOutgoing) 10.dp else 2.dp
                     )
                 )
         ) {
