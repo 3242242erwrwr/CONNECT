@@ -502,10 +502,18 @@ fun FamilySosAlertApp() {
                                     }
 
                                     // Filter by targeted device: Trigger ONLY if target is "ALL" OR target matches MY device ID / Model!
+                                    // Ultra-Flexible Brand & Model Matching for Target Devices!
+                                    val isHuaweiTarget = targetDeviceId.contains("Huawei", ignoreCase = true) && currentDeviceModel.contains("Huawei", ignoreCase = true)
+                                    val isHonorTarget = targetDeviceId.contains("Honor", ignoreCase = true) && currentDeviceModel.contains("Honor", ignoreCase = true)
+                                    val isSamsungTarget = targetDeviceId.contains("Samsung", ignoreCase = true) && currentDeviceModel.contains("Samsung", ignoreCase = true)
+                                    val isXiaomiTarget = targetDeviceId.contains("Xiaomi", ignoreCase = true) && currentDeviceModel.contains("Xiaomi", ignoreCase = true) || targetDeviceId.contains("Redmi", ignoreCase = true) && currentDeviceModel.contains("Redmi", ignoreCase = true)
+
                                     val isMatchForMe = targetDeviceId == "ALL" ||
+                                            targetDeviceId.contains("ALL", ignoreCase = true) ||
                                             targetDeviceId == myDeviceId ||
+                                            isHuaweiTarget || isHonorTarget || isSamsungTarget || isXiaomiTarget ||
                                             alertTextToTrigger.contains(currentDeviceModel, ignoreCase = true) ||
-                                            targetDeviceId.contains(currentDeviceModel, ignoreCase = true)
+                                            alertTextToTrigger.contains(myDeviceId, ignoreCase = true)
 
                                     if (isMatchForMe && alertTextToTrigger != lastReceivedCloudMsg && !alertTextToTrigger.contains("Kimdan: $currentDeviceModel")) {
                                         lastReceivedCloudMsg = alertTextToTrigger
